@@ -11,6 +11,11 @@ mixed **Hebrew / English (RTL + LTR)** text. Park it on the side of a monitor an
   (sanitized), pretty-printed JSON, images, and plain text. Syntax highlighting for code blocks.
 - **Copy RTL.** Copies the text back with every Hebrew line wrapped in Unicode isolates (RLI…PDI), so it pastes
   correctly into apps that have no RTL support. Code fences are left untouched.
+- **Smart cards.** A copied JWT is decoded (claims, expiry), JSON gets a collapsible tree with a path filter
+  (`.items[].name`), and colors, timestamps, Base64 and links get their own card (color formats, dates, decoded
+  text, URL parts and an on-demand page preview).
+- **Compare.** Diff the shown item against any history item, line by line with changed words highlighted.
+- **Translate.** Hebrew ↔ English with Apple's on-device Translation framework (macOS 26+). Nothing leaves the Mac.
 - **History.** Searchable, with pinning, deleting and a right-click menu. Optionally kept across restarts.
 - **Multiple monitors.** Open more windows (⌘N) or native macOS tabs (⌘T). Hold (⌘L) freezes one window on an
   item while the others keep following the clipboard.

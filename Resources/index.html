@@ -134,6 +134,54 @@
   #ctx .mi.danger { color: #d33; }
   #ctx .mi.danger:hover { background: #d33; color: #fff; }
   #ctx hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px; }
+
+  /* Action bar, smart cards, diff */
+  .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: -4px 0 10px; direction: ltr; }
+  .actions button, .row-btns button { border-color: var(--line); background: var(--panel); }
+  .actions button.on { color: var(--accent); border-color: var(--accent); }
+  .card { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel);
+    direction: ltr; text-align: left; font-size: 13px; }
+  .card.warn { border-color: var(--warn); }
+  .card-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+  .card .sub { font-size: 11px; color: var(--muted); margin: 10px 0 3px; font-weight: 600; }
+  .card .big { font-size: 16px; font-weight: 600; unicode-bidi: plaintext; text-align: start; }
+  .card .note { margin: 4px 0; }
+  .kv { border-collapse: collapse; width: 100%; }
+  .kv th { text-align: left; color: var(--muted); font-weight: 500; padding: 2px 12px 2px 0; white-space: nowrap; vertical-align: top; width: 1%; }
+  .kv td { padding: 2px 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; word-break: break-all; unicode-bidi: plaintext; }
+  .kv td.copy:hover { color: var(--accent); cursor: pointer; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 9px; margin-bottom: 6px; }
+  .badge.good { background: #2e9e5b22; color: #2e9e5b; } .badge.bad { background: #d3333322; color: #d33; }
+  .swatch { height: 56px; border-radius: 7px; border: 1px solid var(--line); margin-bottom: 8px;
+    box-shadow: inset 0 0 0 100px transparent; }
+  .row-btns { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+  .jq { flex: 1; min-width: 140px; font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: var(--fg); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 7px; outline: none; }
+  .jq:focus { border-color: var(--accent); }
+  .jtree { margin-top: 8px; font: 12.5px/1.55 ui-monospace, "SF Mono", Menlo, monospace; overflow-x: auto; }
+  .jnode > summary { cursor: default; color: var(--muted); list-style: revert; }
+  .jnode .jrow { padding-left: 18px; white-space: pre-wrap; word-break: break-word; }
+  .jkey { color: #a0479b; } .j-string { color: #2a7a3b; unicode-bidi: plaintext; } .j-number { color: #1f5fbf; }
+  .j-boolean, .j-null { color: #b35c00; }
+  @media (prefers-color-scheme: dark) { .jkey { color: #e08ad6; } .j-string { color: #8fd18f; } .j-number { color: #7fb0ff; } .j-boolean, .j-null { color: #ffb35c; } }
+  .decoded { white-space: pre-wrap; unicode-bidi: plaintext; text-align: start; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; }
+  .preview { margin-top: 8px; }
+  .preview img { max-width: 100%; max-height: 180px; border-radius: 6px; display: block; margin-bottom: 6px; }
+  .preview .ptitle { font-weight: 600; font-size: 14px; unicode-bidi: plaintext; text-align: start; }
+  .preview .pdesc { color: var(--muted); unicode-bidi: plaintext; text-align: start; }
+  .diffhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; direction: ltr; font-size: 12px; }
+  .diffhead .note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .diffhead .stat { font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: var(--muted); }
+  .diff { font-size: 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .diff .line { white-space: pre-wrap; min-height: 1.6em; padding: 0 10px 0 22px; position: relative; }
+  .diff .line::before { position: absolute; left: 7px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+  .diff .line.al { background: #2e9e5b1c; } .diff .line.al::before { content: "+"; color: #2e9e5b; }
+  .diff .line.dl { background: #d333331a; } .diff .line.dl::before { content: "−"; color: #d33; }
+  .diff .line.eq { color: var(--muted); }
+  .wadd { background: #2e9e5b44; border-radius: 3px; } .wdel { background: #d3333340; border-radius: 3px; text-decoration: line-through; text-decoration-color: #d3333399; }
+  #history .item.cmp { box-shadow: inset 3px 0 0 var(--accent); }
+  body.picking #history .item:hover { background: var(--chip); }
+  body.picking #history { box-shadow: inset 0 0 0 2px var(--accent); }
 </style>
 </head>
 <body>
@@ -213,7 +261,7 @@
   // BiDi: majority detection per block (see toolkit README "Choosing the detection mode").
   // Rich HTML from web pages often holds text directly in <div>s, so leaf divs count as blocks there.
   const BIDI = {
-    blocks: 'p, h1, h2, h3, h4, h5, h6, blockquote, td, th, dd, dt, figcaption, .line, ' +
+    blocks: 'p, h1, h2, h3, h4, h5, h6, blockquote, td, th, dd, dt, figcaption, .line, .decoded, ' +
             '.rich div:not(:has(div, p, ul, ol, table, pre, h1, h2, h3, h4, blockquote))',
     editors: '#search, #settings textarea', detect: 'majority', ratio: 0.3, align: true,
     forceLtr: 'pre, kbd, samp', isolateInline: 'a, code, kbd, strong, em, b, i',
@@ -331,13 +379,364 @@
   let query = '';
   let state = { paused: false };
 
+  // ---- smart actions by content type ---------------------------------------------------------------
+  const elt = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const b64decode = (s) => {
+    const t = s.replace(/-/g, '+').replace(/_/g, '/');
+    const bin = atob(t + '==='.slice((t.length + 3) % 4));
+    return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(bin, (ch) => ch.charCodeAt(0)));
+  };
+  const printable = (s) => s.length > 0 && (s.match(/[\x20-\x7E֐-׿\n\r\t -￿]/g) || []).length / s.length > 0.95;
+  const relTime = (ms) => {
+    const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+    const d = (ms - Date.now()) / 1000, a = Math.abs(d);
+    for (const [u, sec] of [['year', 31536000], ['month', 2592000], ['day', 86400], ['hour', 3600], ['minute', 60]])
+      if (a >= sec) return rtf.format(Math.round(d / sec), u);
+    return rtf.format(Math.round(d), 'second');
+  };
+  const fullDate = (ms) => new Date(ms).toLocaleString('en-GB', { dateStyle: 'full', timeStyle: 'medium' });
+
+  // Each detector returns { title, build(card) } or null. Only single-token clips are inspected.
+  function detectSmart(item) {
+    const t = (item.text || '').trim();
+    if (!t || t.length > 200000) return null;
+    const single = !/\s/.test(t);
+    // JWT
+    if (single && /^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*$/.test(t)) {
+      try {
+        const [h, p] = t.split('.').slice(0, 2).map((x) => JSON.parse(b64decode(x)));
+        if (h && h.alg) return { title: 'JWT', build: (card) => {
+          const now = Date.now();
+          if (p.exp) {
+            const exp = p.exp * 1000;
+            card.appendChild(elt('div', 'badge ' + (exp < now ? 'bad' : 'good'), exp < now ? 'Expired ' + relTime(exp) : 'Valid, expires ' + relTime(exp)));
+          }
+          const kv = [['alg', h.alg], ['typ', h.typ]];
+          for (const k of ['iss', 'sub', 'aud']) if (p[k] != null) kv.push([k, String(p[k])]);
+          for (const k of ['iat', 'nbf', 'exp']) if (p[k]) kv.push([k, fullDate(p[k] * 1000)]);
+          card.appendChild(kvTable(kv));
+          card.appendChild(elt('div', 'sub', 'Header')); card.appendChild(jsonView(h));
+          card.appendChild(elt('div', 'sub', 'Payload')); card.appendChild(jsonView(p));
+          card.appendChild(elt('div', 'note', 'Signature is not verified.'));
+        } };
+      } catch (e) { /* not a JWT */ }
+    }
+    // URL
+    if (single && /^https?:\/\/[^\s]+$/i.test(t)) {
+      let u; try { u = new URL(t); } catch (e) { u = null; }
+      if (u) return { title: 'Link', build: (card) => {
+        const kv = [['host', u.host], ['path', decodeURIComponent(u.pathname)]];
+        if (u.hash) kv.push(['hash', decodeURIComponent(u.hash)]);
+        card.appendChild(kvTable(kv));
+        const params = [...u.searchParams];
+        if (params.length) { card.appendChild(elt('div', 'sub', 'Query parameters')); card.appendChild(kvTable(params)); }
+        const row = elt('div', 'row-btns');
+        const open = elt('button', '', 'Open'); open.onclick = () => native({ cmd: 'open', url: u.href });
+        const prev = elt('button', '', 'Load preview'); prev.onclick = () => { prev.dataset.loading = '1'; prev.disabled = true; prev.textContent = 'Loading…'; native({ cmd: 'preview', url: u.href }); };
+        row.append(open, prev); card.appendChild(row);
+        const slot = elt('div', 'preview'); slot.dataset.url = u.href; card.appendChild(slot);
+        if (previews[u.href]) fillPreview(slot, previews[u.href]);
+      } };
+    }
+    // Color
+    const col = parseColor(t);
+    if (col) return { title: 'Color', build: (card) => {
+      const sw = elt('div', 'swatch'); sw.style.background = t; card.appendChild(sw);
+      const [r, g, b, a] = col, [hh, ss, ll] = rgbToHsl(r, g, b);
+      const hex = '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('') + (a < 1 ? Math.round(a * 255).toString(16).padStart(2, '0') : '');
+      const vals = [['HEX', hex], ['RGB', a < 1 ? `rgba(${r}, ${g}, ${b}, ${+a.toFixed(3)})` : `rgb(${r}, ${g}, ${b})`],
+                    ['HSL', a < 1 ? `hsla(${hh}, ${ss}%, ${ll}%, ${+a.toFixed(3)})` : `hsl(${hh}, ${ss}%, ${ll}%)`],
+                    ['Swift', `Color(red: ${(r / 255).toFixed(3)}, green: ${(g / 255).toFixed(3)}, blue: ${(b / 255).toFixed(3)})`]];
+      card.appendChild(kvTable(vals, true));
+    } };
+    // Timestamp (Unix seconds / milliseconds, or ISO 8601)
+    let ms = null;
+    if (/^\d{10}$/.test(t)) ms = Number(t) * 1000;
+    else if (/^\d{13}$/.test(t)) ms = Number(t);
+    else if (/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/.test(t)) ms = Date.parse(t);
+    if (ms && ms > Date.UTC(1990, 0) && ms < Date.UTC(2100, 0)) return { title: 'Date & time', build: (card) => {
+      card.appendChild(elt('div', 'big', fullDate(ms)));
+      card.appendChild(elt('div', 'note', relTime(ms)));
+      card.appendChild(kvTable([['UTC', new Date(ms).toISOString()], ['Unix (s)', String(Math.floor(ms / 1000))], ['Unix (ms)', String(ms)]], true));
+    } };
+    // JSON
+    if (item.fmt === 'json') return { title: 'JSON', build: (card) => jsonExplorer(card, JSON.parse(t)) };
+    // Base64 (only when it decodes to readable UTF-8)
+    if (single && t.length >= 12 && /^[A-Za-z0-9+/_-]+={0,2}$/.test(t) && !/^\d+$/.test(t)) {
+      try {
+        const dec = b64decode(t);
+        if (printable(dec)) return { title: 'Base64', build: (card) => {
+          card.appendChild(elt('div', 'sub', 'Decoded'));
+          let parsed = null; try { parsed = JSON.parse(dec); } catch (e) { /* text */ }
+          if (parsed && typeof parsed === 'object') card.appendChild(jsonView(parsed));
+          else { const p = elt('div', 'decoded', dec); card.appendChild(p); }
+          const row = elt('div', 'row-btns'); const cp = elt('button', '', 'Copy decoded');
+          cp.onclick = () => copyText(dec); row.appendChild(cp); card.appendChild(row);
+        } };
+      } catch (e) { /* not base64 */ }
+    }
+    return null;
+  }
+
+  function kvTable(rows, copyable) {
+    const tb = elt('table', 'kv');
+    for (const [k, v] of rows) {
+      const tr = elt('tr'); tr.append(elt('th', '', k));
+      const td = elt('td', '', v == null ? '' : String(v));
+      if (copyable) { td.title = 'Click to copy'; td.classList.add('copy'); td.onclick = () => copyText(String(v)); }
+      tr.append(td); tb.append(tr);
+    }
+    return tb;
+  }
+
+  function parseColor(t) {
+    let m = t.match(/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+    if (m) {
+      let h = m[1]; if (h.length <= 4) h = [...h].map((c) => c + c).join('');
+      const n = (i) => parseInt(h.slice(i, i + 2), 16);
+      return [n(0), n(2), n(4), h.length === 8 ? n(6) / 255 : 1];
+    }
+    m = t.match(/^rgba?\(\s*(\d{1,3})[\s,]+(\d{1,3})[\s,]+(\d{1,3})(?:[\s,/]+([\d.]+%?))?\s*\)$/i);
+    if (m) return [+m[1], +m[2], +m[3], m[4] ? (m[4].endsWith('%') ? parseFloat(m[4]) / 100 : +m[4]) : 1];
+    m = t.match(/^hsla?\(\s*([\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%(?:[\s,/]+([\d.]+%?))?\s*\)$/i);
+    if (m) {
+      const [r, g, b] = hslToRgb(+m[1], +m[2], +m[3]);
+      return [r, g, b, m[4] ? (m[4].endsWith('%') ? parseFloat(m[4]) / 100 : +m[4]) : 1];
+    }
+    return null;
+  }
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+    let h = 0, s = 0;
+    if (max !== min) {
+      const d = max - min; s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60;
+    }
+    return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
+  }
+  function hslToRgb(h, s, l) {
+    s /= 100; l /= 100;
+    const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+    const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return [f(0), f(8), f(4)].map((v) => Math.round(v * 255));
+  }
+
+  // JSON tree with collapsible nodes
+  function jsonView(v, depth = 0) {
+    if (v === null || typeof v !== 'object') {
+      const s = elt('span', 'j-' + (v === null ? 'null' : typeof v), typeof v === 'string' ? JSON.stringify(v) : String(v));
+      return s;
+    }
+    const isArr = Array.isArray(v), keys = Object.keys(v);
+    const d = elt('details', 'jnode'); if (depth < 2) d.open = true;
+    const sum = elt('summary', '', isArr ? `[ ${keys.length} ]` : `{ ${keys.length} }`); d.appendChild(sum);
+    for (const k of keys) {
+      const row = elt('div', 'jrow');
+      row.appendChild(elt('span', 'jkey', isArr ? k : JSON.stringify(k)));
+      row.appendChild(document.createTextNode(': '));
+      row.appendChild(jsonView(v[k], depth + 1));
+      d.appendChild(row);
+    }
+    return d;
+  }
+  // Path filter: .a.b[0], .items[].name, [2]
+  function jsonQuery(data, path) {
+    const toks = path.trim().match(/\.[^.[\]]+|\[\d*\]/g) || [];
+    if (path.trim() && toks.join('') !== path.trim()) throw new Error('Use .key, [0] or [] (e.g. .items[].name)');
+    let cur = [data];
+    for (const tk of toks) {
+      const next = [];
+      for (const v of cur) {
+        if (tk === '[]') { if (Array.isArray(v)) next.push(...v); else if (v && typeof v === 'object') next.push(...Object.values(v)); }
+        else if (tk[0] === '[') { if (Array.isArray(v) && v[+tk.slice(1, -1)] !== undefined) next.push(v[+tk.slice(1, -1)]); }
+        else if (v && typeof v === 'object' && tk.slice(1) in v) next.push(v[tk.slice(1)]);
+      }
+      cur = next;
+    }
+    return toks.some((tk) => tk === '[]') ? cur : cur[0];
+  }
+  function jsonExplorer(card, data) {
+    const bar = elt('div', 'row-btns');
+    const q = elt('input', 'jq'); q.type = 'text'; q.placeholder = 'Filter: .key, [0], .items[].name'; q.spellcheck = false;
+    const mini = elt('button', '', 'Copy minified'); mini.onclick = () => copyText(JSON.stringify(current()));
+    const pretty = elt('button', '', 'Copy result'); pretty.onclick = () => copyText(JSON.stringify(current(), null, 2));
+    bar.append(q, pretty, mini); card.appendChild(bar);
+    const out = elt('div', 'jtree'); card.appendChild(out);
+    const err = elt('div', 'note'); card.appendChild(err);
+    let result = data;
+    const current = () => result;
+    const run = () => {
+      try { result = q.value.trim() ? jsonQuery(data, q.value) : data; err.textContent = ''; }
+      catch (e) { err.textContent = e.message; return; }
+      out.innerHTML = ''; out.appendChild(result === undefined ? elt('span', 'note', 'No match') : jsonView(result));
+    };
+    q.oninput = run; run();
+  }
+
+  const previews = {};
+  function fillPreview(slot, p) {
+    slot.innerHTML = '';
+    if (p.error && !p.title) { slot.appendChild(elt('div', 'note', 'Preview failed: ' + p.error)); return; }
+    if (p.image) { const img = elt('img'); img.src = p.image; img.alt = ''; img.onerror = () => img.remove(); slot.appendChild(img); }
+    if (p.site) slot.appendChild(elt('div', 'note', p.site));
+    if (p.title) slot.appendChild(elt('div', 'ptitle', p.title));
+    if (p.description) slot.appendChild(elt('div', 'pdesc', p.description));
+    window.__bidiFix.install(BIDI);
+  }
+
+  // ---- diff ----------------------------------------------------------------------------------------
+  // LCS over tokens; returns [{t: '=', '-', '+', v}]
+  function lcsDiff(a, b) {
+    const n = a.length, m = b.length;
+    if (n * m > 4e6) return null;
+    const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    const out = []; let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (a[i] === b[j]) { out.push({ t: '=', v: a[i] }); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) out.push({ t: '-', v: a[i++] });
+      else out.push({ t: '+', v: b[j++] });
+    }
+    while (i < n) out.push({ t: '-', v: a[i++] });
+    while (j < m) out.push({ t: '+', v: b[j++] });
+    return out;
+  }
+  const words = (s) => s.match(/\s+|[\p{L}\p{N}_]+|[^\s\p{L}\p{N}_]/gu) || [];
+  function wordLine(el, ops, keep) {
+    for (const o of ops) {
+      if (o.t !== '=' && o.t !== keep) continue;
+      if (o.t === '=') el.appendChild(document.createTextNode(o.v));
+      else el.appendChild(elt('span', 'w' + (o.t === '+' ? 'add' : 'del'), o.v));
+    }
+  }
+  function renderDiff(c, older, newer) {
+    const head = elt('div', 'diffhead');
+    head.appendChild(elt('span', 'chip', 'Compare'));
+    head.appendChild(elt('span', 'note', `${older.app || ''} ${timeStr(older.time)}  →  ${newer.app || ''} ${timeStr(newer.time)}`));
+    const close = elt('button', '', 'Close'); close.onclick = () => { compareWith = null; render(); };
+    head.appendChild(close); c.appendChild(head);
+    const A = (older.text || '').replace(/\r\n?/g, '\n').split('\n'), B = (newer.text || '').replace(/\r\n?/g, '\n').split('\n');
+    const ops = lcsDiff(A, B);
+    if (!ops) { c.appendChild(elt('div', 'empty', 'Too large to compare.')); return; }
+    let add = 0, del = 0;
+    const box = elt('div', 'diff');
+    for (let k = 0; k < ops.length; k++) {
+      const o = ops[k];
+      // pair a run of '-' lines with the following '+' run for word-level highlighting
+      if (o.t === '-' && ops[k + 1] && ops[k + 1].t === '+') {
+        const dels = [], adds = [];
+        while (ops[k] && ops[k].t === '-') dels.push(ops[k++].v);
+        while (ops[k] && ops[k].t === '+') adds.push(ops[k++].v);
+        k--;
+        const n = Math.max(dels.length, adds.length);
+        for (let x = 0; x < n; x++) {
+          const wd = dels[x] != null && adds[x] != null ? lcsDiff(words(dels[x]), words(adds[x])) : null;
+          if (dels[x] != null) { const l = elt('div', 'line dl'); if (wd) wordLine(l, wd, '-'); else l.textContent = dels[x]; box.appendChild(l); del++; }
+          if (adds[x] != null) { const l = elt('div', 'line al'); if (wd) wordLine(l, wd, '+'); else l.textContent = adds[x]; box.appendChild(l); add++; }
+        }
+        continue;
+      }
+      const l = elt('div', 'line ' + (o.t === '+' ? 'al' : o.t === '-' ? 'dl' : 'eq'), o.v);
+      if (o.t === '+') add++; if (o.t === '-') del++;
+      box.appendChild(l);
+    }
+    head.insertBefore(elt('span', 'stat', `+${add}  −${del}`), close);
+    if (!add && !del) c.appendChild(elt('div', 'note', 'The two items are identical.'));
+    c.appendChild(box);
+  }
+
+  // ---- translation ---------------------------------------------------------------------------------
+  let translateReq = 0;
+  function requestTranslation(item) {
+    item.translation = { pending: true };
+    const req = String(++translateReq);
+    item.translation.req = req;
+    native({ cmd: 'translate', text: item.text, req });
+    render();
+  }
+
+  let compareWith = null;  // another history item shown as a diff against the shown one
+  let picking = false;     // next history click picks the item to compare with
+  let view = 'original';   // 'original' | 'translation' for the shown item
+  let lastShown = null;
+
+  const hasTr = (it) => !!(it && it.translation && it.translation.text);
+  // Text the window currently shows (the translation when that view is on); Copy / Copy RTL use it.
+  const shownText = (it) => (view === 'translation' && hasTr(it) ? it.translation.text : it.text);
+  const translatable = (it) => it && it.text && it.fmt !== 'json' && /[A-Za-z֐-׿]{2}/.test(it.text) && !detectSmart(it);
+  const toEnglish = (t) => (t.match(/[֐-׿]/g) || []).length >= (t.match(/[A-Za-z]/g) || []).length;
+
+  function actionBar(c, item) {
+    const bar = elt('div', 'actions');
+    const tr = item.translation;
+    if (translatable(item)) {
+      if (hasTr(item)) {
+        const b = elt('button', view === 'translation' ? 'on' : '', view === 'translation' ? 'Show original' : 'Show translation');
+        b.onclick = () => { view = view === 'translation' ? 'original' : 'translation'; render(); };
+        bar.appendChild(b);
+        if (view === 'translation') bar.appendChild(elt('span', 'note', (tr.from || '') + ' → ' + (tr.to || '') + ' · on-device'));
+      } else if (tr && tr.pending) {
+        bar.appendChild(elt('span', 'note', 'Translating…'));
+      } else {
+        const b = elt('button', '', toEnglish(item.text) ? 'Translate to English' : 'תרגם לעברית');
+        b.onclick = () => requestTranslation(item);
+        bar.appendChild(b);
+      }
+    }
+    if (item.text && history.filter((h) => h.text).length > 1) {
+      const b = elt('button', picking ? 'on' : '', picking ? 'Pick an item in History…' : 'Compare…');
+      b.title = 'Compare with another history item';
+      b.onclick = () => { picking = !picking; if (picking) document.body.classList.add('show-history'); render(); renderHistory(); };
+      bar.appendChild(b);
+    }
+    if (bar.children.length) c.appendChild(bar);
+    if (tr && tr.error) {
+      const n = elt('div', 'card warn');
+      if (tr.error === 'notInstalled') {
+        n.appendChild(elt('div', '', `The ${tr.from || ''} → ${tr.to || ''} language pack isn't downloaded yet. Download it once in System Settings › General › Language & Region › Translation Languages; after that translation works offline.`));
+        const row = elt('div', 'row-btns'); const o = elt('button', '', 'Open Translation Languages');
+        o.onclick = () => native({ cmd: 'openTranslationSettings' }); const r = elt('button', '', 'Try again');
+        r.onclick = () => requestTranslation(item); row.append(o, r); n.appendChild(row);
+      } else if (tr.error === 'unsupported') {
+        n.appendChild(elt('div', '', 'On-device translation needs macOS 26 or later.'));
+      } else {
+        n.appendChild(elt('div', '', 'Translation failed: ' + tr.error));
+      }
+      c.appendChild(n);
+    }
+  }
+
+  function renderBody(c, fmt, text, html) {
+    if (fmt === 'json') {
+      const pre = document.createElement('pre'); const code = document.createElement('code');
+      code.className = 'language-json'; code.textContent = looksLikeJson(text);
+      pre.appendChild(code); c.appendChild(pre); highlight(c);
+    } else if (fmt === 'markdown' || fmt === 'rich') {
+      const box = document.createElement('div');
+      box.className = fmt === 'rich' ? 'md rich' : 'md';
+      box.innerHTML = fmt === 'rich' ? sanitize(html) : marked.parse(text);
+      c.appendChild(box);
+      fixContainers(box); highlight(box);
+    } else {
+      c.appendChild(renderPlain(text));
+    }
+  }
+
   function render() {
     const c = $('#content');
     c.innerHTML = '';
     const item = history[shownIndex];
+    if (item !== lastShown) { lastShown = item; view = 'original'; }
+    if (compareWith && (compareWith === item || !history.includes(compareWith))) compareWith = null;
+    document.body.classList.toggle('picking', picking);
     if (!item) { c.innerHTML = '<div class="empty">Copy something…</div>'; updateHeader(); return; }
     const fmt = item.fmt;
-    if (fmt === 'image') {
+    if (compareWith && item.text && compareWith.text) {
+      const [older, newer] = compareWith.time <= item.time ? [compareWith, item] : [item, compareWith];
+      renderDiff(c, older, newer);
+    } else if (fmt === 'image') {
       if (S.images) {
         c.innerHTML = '<div class="imgwrap"><img alt=""></div><p class="note"></p>';
         c.querySelector('img').src = item.image;
@@ -351,21 +750,23 @@
     } else if (fmt === 'other') {
       c.innerHTML = '<div class="empty"></div>';
       c.firstChild.textContent = 'Non-text content (' + (item.types || 'unknown') + ')';
-    } else if (raw) {
-      const box = document.createElement('div'); box.className = 'raw';
-      box.textContent = item.text; c.appendChild(box);
-    } else if (fmt === 'json') {
-      const pre = document.createElement('pre'); const code = document.createElement('code');
-      code.className = 'language-json'; code.textContent = looksLikeJson(item.text);
-      pre.appendChild(code); c.appendChild(pre); highlight(c);
-    } else if (fmt === 'markdown' || fmt === 'rich') {
-      const box = document.createElement('div');
-      box.className = fmt === 'rich' ? 'md rich' : 'md';
-      box.innerHTML = fmt === 'rich' ? sanitize(item.html) : marked.parse(item.text);
-      c.appendChild(box);
-      fixContainers(box); highlight(box);
     } else {
-      c.appendChild(renderPlain(item.text));
+      actionBar(c, item);
+      const text = shownText(item);
+      if (raw) {
+        const box = document.createElement('div'); box.className = 'raw';
+        box.textContent = text; c.appendChild(box);
+      } else if (view === 'translation' && hasTr(item)) {
+        // A translation of rich HTML is plain text (or Markdown) now.
+        renderBody(c, fmt === 'rich' ? classify({ kind: 'text', text }) : fmt, text);
+      } else {
+        const smart = detectSmart(item);
+        if (fmt !== 'json' || !smart) renderBody(c, fmt, text, item.html);
+        if (smart) {
+          const card = elt('div', 'card'); card.appendChild(elt('div', 'card-title', smart.title));
+          try { smart.build(card); c.appendChild(card); } catch (e) { if (fmt === 'json') renderBody(c, fmt, text); }
+        }
+      }
     }
     window.__bidiFix.install(BIDI);
     c.scrollTop = 0;
@@ -377,7 +778,8 @@
   let lastTitle = '';
   function updateHeader() {
     const item = history[shownIndex];
-    $('#kind').textContent = item ? LABEL[item.fmt] : '—';
+    const smart = item && item.fmt === 'text' && detectSmart(item);
+    $('#kind').textContent = item ? (smart ? smart.title : LABEL[item.fmt]) : '—';
     const bits = [];
     if (item && item.app) bits.push(item.app);
     if (item && item.time) {
@@ -391,7 +793,7 @@
     $('#b-raw').classList.toggle('on', raw);
     $('#b-raw').disabled = !hasText;
     $('#b-copy').disabled = !hasText;
-    $('#b-rtl').disabled = !hasText || !HEB.test(item.text);
+    $('#b-rtl').disabled = !hasText || !HEB.test(shownText(item));
     $('#b-hold').classList.toggle('on', held);
     $('#b-hist').classList.toggle('on', document.body.classList.contains('show-history'));
     $('#b-settings').classList.toggle('on', document.body.classList.contains('show-settings'));
@@ -416,7 +818,7 @@
       const it = history[i];
       shown++;
       const d = document.createElement('div');
-      d.className = 'item' + (i === shownIndex ? ' sel' : '') + (it.pinned ? ' pinned' : '');
+      d.className = 'item' + (i === shownIndex ? ' sel' : '') + (it.pinned ? ' pinned' : '') + (it === compareWith ? ' cmp' : '');
       d.dataset.index = i;
       const t = document.createElement('div'); t.className = 't';
       t.textContent = it.text ? it.text.slice(0, 200) : (it.fmt === 'image' ? '🖼 Image ' + (it.size || '') : it.fmt === 'secret' ? '🔒 Hidden' : '…');
@@ -430,7 +832,10 @@
       bd.onclick = (e) => { e.stopPropagation(); op('delete', it); };
       acts.append(bp, bd);
       d.append(t, s, acts);
-      d.onclick = () => { shownIndex = i; render(); renderHistory(); };
+      d.onclick = () => {
+        if (picking) { picking = false; if (i !== shownIndex && it.text) compareWith = it; render(); renderHistory(); return; }
+        shownIndex = i; render(); renderHistory();
+      };
       h.appendChild(d);
     };
     if (pinned.length) { section('Pinned'); pinned.forEach(row); if (recent.length) section('Recent'); }
@@ -459,7 +864,7 @@
   }
   function exportHistory() {
     return history.filter((it) => it.fmt !== 'secret' && !(it.image && it.image.length > MAX_SAVED_IMAGE))
-      .map(({ fmt, self, ...rest }) => rest);
+      .map(({ fmt, self, translation, ...rest }) => rest);
   }
 
   function toast(msg) {
@@ -555,14 +960,18 @@
       sel && { label: 'Copy Selection', run: () => copyText(sel) },
       sel && HEB.test(sel) && { label: 'Copy Selection with RTL Marks', run: () => copyText(sel, true) },
       sel && '-',
-      it.text && { label: 'Copy', run: () => copyText(it.text) },
-      it.text && HEB.test(it.text) && { label: 'Copy with RTL Marks', key: inContent ? '⇧⌘C' : '', run: () => copyText(it.text, true) },
+      it.text && { label: 'Copy', run: () => copyText(inContent ? shownText(it) : it.text) },
+      it.text && HEB.test(inContent ? shownText(it) : it.text) && { label: 'Copy with RTL Marks', key: inContent ? '⇧⌘C' : '', run: () => copyText(inContent ? shownText(it) : it.text, true) },
       it.text && '-',
       { label: it.pinned ? 'Unpin' : 'Pin', run: () => op(it.pinned ? 'unpin' : 'pin', it) },
       { label: 'Open in New Window', run: () => native({ cmd: 'openItem', id: keyOf(it) }) },
       inContent ? { label: held ? 'Follow the Clipboard' : 'Hold This Item', key: '⌘L', run: () => window.monitor.toggleHold() }
                 : { label: 'Show', run: () => { shownIndex = i; render(); renderHistory(); } },
       inContent && it.text && { label: raw ? 'Show Rendered' : 'Show Raw Text', key: '⌘R', run: () => window.monitor.toggleRaw() },
+      inContent && translatable(it) && !hasTr(it) && { label: toEnglish(it.text) ? 'Translate to English' : 'Translate to Hebrew', run: () => requestTranslation(it) },
+      inContent && hasTr(it) && { label: view === 'translation' ? 'Show Original' : 'Show Translation', run: () => { view = view === 'translation' ? 'original' : 'translation'; render(); } },
+      !inContent && it.text && i !== shownIndex && history[shownIndex] && history[shownIndex].text && { label: 'Compare with Shown Item', run: () => { compareWith = it; picking = false; render(); renderHistory(); } },
+      inContent && compareWith && { label: 'Close Comparison', run: () => { compareWith = null; render(); renderHistory(); } },
       '-',
       { label: 'Delete', danger: true, run: () => op('delete', it) },
     ];
@@ -674,10 +1083,22 @@
       if (i < 0) return;
       shownIndex = i; held = true; render(); renderHistory();
     },
+    translated(r) {
+      const it = history.find((h) => h.translation && h.translation.req === r.req);
+      if (!it) return;
+      it.translation = r.error ? { error: r.error, from: r.from, to: r.to } : { text: r.text, from: r.from, to: r.to };
+      if (it === history[shownIndex] && !r.error) view = 'translation';
+      if (it === history[shownIndex]) render();
+    },
+    previewed(p) {
+      previews[p.url] = p;
+      document.querySelectorAll('.preview').forEach((slot) => { if (slot.dataset.url === p.url) fillPreview(slot, p); });
+      document.querySelectorAll('.card button[data-loading]').forEach((b) => b.remove());
+    },
     copyRtl() {
       const it = history[shownIndex];
       if (!it || !it.text) return;
-      native({ cmd: 'copy', text: wrapRtl(it.text) });
+      native({ cmd: 'copy', text: wrapRtl(shownText(it)) });
       toast('Copied with RTL marks');
     },
   };
@@ -685,7 +1106,7 @@
   $('#b-raw').onclick = () => window.monitor.toggleRaw();
   $('#b-hist').onclick = () => window.monitor.toggleHistory();
   $('#b-hold').onclick = () => window.monitor.toggleHold();
-  $('#b-copy').onclick = () => { const it = history[shownIndex]; if (it && it.text) { native({ cmd: 'copy', text: it.text }); toast('Copied'); } };
+  $('#b-copy').onclick = () => { const it = history[shownIndex]; if (it && it.text) { native({ cmd: 'copy', text: shownText(it) }); toast('Copied'); } };
   $('#b-rtl').onclick = () => window.monitor.copyRtl();
   $('#kind').ondblclick = () => native({ cmd: 'pause' });
   $('#search').addEventListener('input', (e) => { query = e.target.value; renderHistory(); });
@@ -702,6 +1123,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && ctx.classList.contains('show')) { closeMenu(); return; }
     if (e.key === 'Escape' && document.body.classList.contains('show-settings')) { window.monitor.toggleSettings(false); return; }
+    if (e.key === 'Escape' && (picking || compareWith)) { picking = false; compareWith = null; render(); renderHistory(); return; }
     if (e.target.closest && e.target.closest('input, textarea, select')) return;
     if (e.key === 'ArrowDown' && shownIndex < history.length - 1) { shownIndex++; render(); renderHistory(); }
     if (e.key === 'ArrowUp' && shownIndex > 0) { shownIndex--; render(); renderHistory(); }

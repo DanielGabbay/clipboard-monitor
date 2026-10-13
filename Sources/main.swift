@@ -5,6 +5,7 @@ import Cocoa
 import WebKit
 import Carbon
 import ServiceManagement
+import Translation
 
 // MARK: - Settings
 
@@ -202,6 +203,12 @@ final class MonitorController: NSObject, NSWindowDelegate, WKNavigationDelegate 
         case "newWindow": app.newWindow(nil)
         case "newTab": app.newWindowForTab(nil)
         case "clearAll": app.clearAllHistory()
+        case "translate":
+            if let text = body["text"] as? String, let req = body["req"] as? String { app.translate(text, req: req, for: self) }
+        case "openTranslationSettings":
+            if let url = URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension") { NSWorkspace.shared.open(url) }
+        case "preview":
+            if let s = body["url"] as? String, let url = URL(string: s) { app.linkPreview(url, for: self) }
         // Pin / unpin / delete apply to every window's history, so all windows stay the same.
         case "historyOp": app.controllers.forEach { $0.call("monitor.applyOp", body) }
         case "openItem":
@@ -363,6 +370,92 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         img.draw(in: NSRect(origin: .zero, size: size))
         NSGraphicsContext.restoreGraphicsState()
         return rep.representation(using: .png, properties: [:])
+    }
+
+    // MARK: translation (on-device, Apple Translation framework)
+
+    /// Translates Hebrew <-> English line by line, so Markdown structure and code fences survive.
+    func translate(_ text: String, req: String, for c: MonitorController) {
+        let hebrew = text.unicodeScalars.filter { (0x0590...0x05FF).contains($0.value) }.count
+        let latin = text.unicodeScalars.filter { CharacterSet.letters.contains($0) && $0.value < 0x0250 }.count
+        let source = Locale.Language(identifier: hebrew >= latin ? "he" : "en")
+        let target = Locale.Language(identifier: hebrew >= latin ? "en" : "he")
+        let pair = ["from": hebrew >= latin ? "he" : "en", "to": hebrew >= latin ? "en" : "he"]
+        func reply(_ extra: [String: Any]) { c.call("monitor.translated", ["req": req].merging(pair) { a, _ in a }.merging(extra) { a, _ in a }) }
+
+        guard #available(macOS 26.0, *) else { reply(["error": "unsupported"]); return }
+        Task { @MainActor in
+            let status = await LanguageAvailability().status(from: source, to: target)
+            guard status == .installed else { reply(["error": status == .supported ? "notInstalled" : "unsupported"]); return }
+            do {
+                let session = TranslationSession(installedSource: source, target: target)
+                // Translate only prose lines; keep fences, blank lines and Markdown prefixes as they are.
+                var lines = text.components(separatedBy: "\n")
+                var inFence = false
+                var requests: [TranslationSession.Request] = []
+                var prefixes: [String: String] = [:]
+                let prefixRE = try NSRegularExpression(pattern: "^(\\s*(?:[-*+]\\s+(?:\\[[ xX]\\]\\s+)?|\\d+[.)]\\s+|>\\s*|#{1,6}\\s+)*)")
+                for (i, line) in lines.enumerated() {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") { inFence.toggle(); continue }
+                    if inFence || trimmed.isEmpty || !trimmed.contains(where: { $0.isLetter }) { continue }
+                    let ns = line as NSString
+                    let m = prefixRE.firstMatch(in: line, range: NSRange(location: 0, length: ns.length))
+                    let pre = m.map { ns.substring(with: $0.range) } ?? ""
+                    let body = ns.substring(from: pre.utf16.count)
+                    prefixes[String(i)] = pre
+                    requests.append(.init(sourceText: body, clientIdentifier: String(i)))
+                }
+                for r in try await session.translations(from: requests) {
+                    if let id = r.clientIdentifier, let i = Int(id) { lines[i] = (prefixes[id] ?? "") + r.targetText }
+                }
+                reply(["text": lines.joined(separator: "\n")])
+            } catch {
+                reply(["error": error.localizedDescription])
+            }
+        }
+    }
+
+    // MARK: link preview (only when the user asks for it)
+
+    func linkPreview(_ url: URL, for c: MonitorController) {
+        guard url.scheme == "https" || url.scheme == "http" else { return }
+        var req = URLRequest(url: url, timeoutInterval: 8)
+        req.setValue("Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: req) { data, resp, err in
+            var out: [String: Any] = ["url": url.absoluteString]
+            if let err = err { out["error"] = err.localizedDescription }
+            if let data = data?.prefix(400_000), let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) {
+                let ns = html as NSString
+                func meta(_ names: [String]) -> String? {
+                    for n in names {
+                        for pattern in ["<meta[^>]+(?:property|name)=[\"']\(n)[\"'][^>]*content=[\"']([^\"']*)",
+                                        "<meta[^>]+content=[\"']([^\"']*)[\"'][^>]*(?:property|name)=[\"']\(n)[\"']"] {
+                            guard let re = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+                                  let m = re.firstMatch(in: html, range: NSRange(location: 0, length: ns.length)),
+                                  m.numberOfRanges > 1 else { continue }
+                            let v = ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !v.isEmpty { return decodeEntities(v) }
+                        }
+                    }
+                    return nil
+                }
+                func decodeEntities(_ s: String) -> String {
+                    s.replacingOccurrences(of: "&amp;", with: "&").replacingOccurrences(of: "&quot;", with: "\"")
+                        .replacingOccurrences(of: "&#39;", with: "'").replacingOccurrences(of: "&lt;", with: "<").replacingOccurrences(of: "&gt;", with: ">")
+                }
+                var title = meta(["og:title", "twitter:title"])
+                if title == nil, let r = html.range(of: "<title[^>]*>([^<]*)</title>", options: [.regularExpression, .caseInsensitive]) {
+                    title = decodeEntities(String(html[r]).replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression))
+                }
+                out["title"] = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+                out["description"] = meta(["og:description", "description", "twitter:description"])
+                if let img = meta(["og:image", "twitter:image"]), let abs = URL(string: img, relativeTo: url) { out["image"] = abs.absoluteString }
+                out["site"] = meta(["og:site_name"]) ?? url.host
+            }
+            if let http = resp as? HTTPURLResponse { out["status"] = http.statusCode }
+            DispatchQueue.main.async { c.call("monitor.previewed", out) }
+        }.resume()
     }
 
     func writeClipboard(_ text: String) {
