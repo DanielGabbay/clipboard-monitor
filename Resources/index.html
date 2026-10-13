@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipboard Monitor</title>
+<link rel="stylesheet" href="hljs.css">
+<style>
+  :root {
+    --bg: #fbfbfa; --fg: #1d1d1f; --muted: #6e6e73; --line: #e3e3e0; --panel: #f1f1ef;
+    --code-bg: #f3f3f1; --accent: #2f6fde; --chip: #e8eefb; --warn: #b35c00;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1c1c1e; --fg: #ececec; --muted: #9a9aa0; --line: #343437; --panel: #242427;
+      --code-bg: #2a2a2d; --accent: #6ea0ff; --chip: #26324a; --warn: #ffb35c; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Arial Hebrew", sans-serif; }
+  body { display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Title-bar area: the window uses a transparent full-size title bar, so leave room for the traffic lights. */
+  header { flex: none; display: flex; align-items: center; gap: 2px; height: 38px; padding: 0 var(--pad-r, 10px) 0 var(--pad-l, 78px);
+    border-bottom: 1px solid var(--line); -webkit-user-select: none; user-select: none; direction: ltr; }
+  header .meta { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; margin-inline-end: 4px; font-size: 12px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip { font-size: 11px; padding: 1px 7px; border-radius: 9px; background: var(--chip); color: var(--accent); font-weight: 600; }
+  .chip.paused { background: transparent; color: var(--warn); border: 1px solid currentColor; }
+  button { font: inherit; font-size: 12px; color: var(--fg); background: transparent; border: 1px solid transparent;
+    border-radius: 6px; padding: 3px 7px; cursor: default; }
+  button:hover { background: var(--panel); border-color: var(--line); }
+  button.on { color: var(--accent); border-color: var(--accent); }
+
+  main { flex: 1; display: flex; min-height: 0; }
+  #content { flex: 1; overflow: auto; padding: 14px 18px 40px; overflow-wrap: anywhere; }
+  #history { flex: none; width: 210px; border-inline-start: 1px solid var(--line); overflow: auto; background: var(--panel);
+    display: none; direction: ltr; }
+  body.show-history #history { display: block; }
+  #history .item { padding: 7px 10px; border-bottom: 1px solid var(--line); font-size: 12px; line-height: 1.4; cursor: default; }
+  #history .item:hover { background: var(--bg); }
+  #history .item.sel { background: var(--chip); }
+  #history .item .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    unicode-bidi: plaintext; text-align: start; }
+  #history .item .s { color: var(--muted); font-size: 10.5px; margin-top: 2px; }
+
+  .empty { color: var(--muted); text-align: center; margin-top: 30vh; font-size: 13px; }
+
+  /* Plain text: one block per line, direction decided per line by the shared engine. */
+  .plain .line { white-space: pre-wrap; min-height: 1.6em; }
+
+  /* Markdown */
+  .md > :first-child { margin-top: 0; }
+  .md h1, .md h2, .md h3, .md h4 { line-height: 1.3; margin: 1.1em 0 .45em; }
+  .md h1 { font-size: 1.55em; } .md h2 { font-size: 1.3em; } .md h3 { font-size: 1.12em; }
+  .md h1, .md h2 { padding-bottom: .2em; border-bottom: 1px solid var(--line); }
+  .md p { margin: .55em 0; }
+  .md ul, .md ol { margin: .4em 0; padding-inline-start: 1.6em; padding-inline-end: 0; }
+  .md :is(ul, ol)[dir="rtl"] { padding-right: 1.6em; padding-left: 0; }
+  .md :is(ul, ol)[dir="ltr"] { padding-left: 1.6em; padding-right: 0; }
+  .md li { margin: .15em 0; }
+  .md blockquote { margin: .6em 0; padding: .1em 1em; color: var(--muted); border-inline-start: 3px solid var(--line); }
+  .md a { color: var(--accent); text-decoration: none; }
+  .md a:hover { text-decoration: underline; }
+  .md hr { border: 0; border-top: 1px solid var(--line); margin: 1.2em 0; }
+  .md img { max-width: 100%; }
+  .md table { border-collapse: collapse; margin: .7em 0; display: block; overflow-x: auto; max-width: 100%; }
+  .md th, .md td { border: 1px solid var(--line); padding: 4px 9px; }
+  .md th { background: var(--panel); }
+  .md input[type=checkbox] { margin: 0 .35em; vertical-align: middle; }
+  code, pre, kbd { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .88em; }
+  :not(pre) > code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 10px 12px; border-radius: 7px; overflow-x: auto; line-height: 1.45;
+    direction: ltr; text-align: left; white-space: pre; }
+
+  .raw { white-space: pre-wrap; unicode-bidi: plaintext; text-align: start; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .88em; }
+  .imgwrap img { max-width: 100%; border-radius: 6px; border: 1px solid var(--line); background:
+    repeating-conic-gradient(#8881 0 25%, transparent 0 50%) 50% / 16px 16px; }
+  .note { color: var(--muted); font-size: 13px; }
+  #search { position: sticky; top: 0; z-index: 1; display: block; width: 100%; padding: 6px 9px; border: 0;
+    border-bottom: 1px solid var(--line); background: var(--panel); color: var(--fg); font: inherit; font-size: 12px;
+    outline: none; unicode-bidi: plaintext; text-align: start; }
+  #history .none { padding: 10px; color: var(--muted); font-size: 12px; }
+  .toast { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg);
+    font-size: 12px; padding: 5px 12px; border-radius: 12px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: .92; }
+  header { margin-top: var(--pad-t, 0px); }
+  body { font-family: var(--font, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Arial Hebrew", sans-serif); }
+  .chip.held { background: transparent; color: var(--accent); border: 1px solid currentColor; }
+  button.icon { padding: 3px 6px; line-height: 0; }
+  button:disabled { opacity: .35; }
+
+  /* Settings panel: an overlay over the content area of this window. */
+  #settings { position: absolute; inset: 0; top: calc(38px + var(--pad-t, 0px)); background: var(--bg); overflow: auto;
+    padding: 14px 18px 30px; display: none; direction: ltr; z-index: 5; }
+  body.show-settings #settings { display: block; }
+  #settings h2 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; }
+  #settings h2 .x { margin-left: auto; }
+  #settings h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; }
+  #settings .row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  #settings .row > span { flex: 1; min-width: 0; }
+  #settings .row small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.35; }
+  #settings select, #settings input[type=text], #settings textarea { font: inherit; font-size: 12.5px; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+  #settings textarea { width: 100%; min-height: 44px; resize: vertical; margin-top: 4px; }
+  #settings .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  #settings .seg button { border: 0; border-radius: 0; padding: 3px 10px; }
+  #settings .seg button.on { background: var(--accent); color: #fff; }
+  #settings input[type=range] { width: 120px; }
+  #settings .switch { appearance: none; -webkit-appearance: none; width: 34px; height: 20px; border-radius: 10px;
+    background: var(--line); position: relative; flex: none; transition: background .15s; margin: 0; }
+  #settings .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px #0004; transition: left .15s; }
+  #settings .switch:checked { background: var(--accent); }
+  #settings .switch:checked::after { left: 16px; }
+  #settings .danger { color: #d33; border-color: var(--line); }
+
+  /* History: pinned section, hover actions */
+  #history .sec { padding: 8px 10px 3px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  #history .item { position: relative; }
+  #history .item .acts { position: absolute; top: 4px; right: 4px; display: none; gap: 2px; background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 1px; }
+  #history .item:hover .acts { display: flex; }
+  #history .item .acts button { padding: 2px 4px; line-height: 0; border-radius: 4px; }
+  #history .item.pinned .pin-mark { color: var(--accent); margin-inline-end: 4px; }
+
+  /* Right-click menu */
+  #ctx { position: fixed; z-index: 20; min-width: 190px; padding: 4px; border-radius: 8px; background: var(--panel);
+    border: 1px solid var(--line); box-shadow: 0 8px 28px #0003; display: none; direction: ltr; font-size: 13px; }
+  #ctx.show { display: block; }
+  #ctx .mi { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 5px; cursor: default; white-space: nowrap; }
+  #ctx .mi:hover { background: var(--accent); color: #fff; }
+  #ctx .mi kbd { margin-left: auto; opacity: .6; font-family: inherit; font-size: 11.5px; }
+  #ctx .mi.danger { color: #d33; }
+  #ctx .mi.danger:hover { background: #d33; color: #fff; }
+  #ctx hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="meta"><span id="kind" class="chip">—</span><span id="paused" class="chip paused" hidden>Paused</span><span id="src"></span></div>
+  <button id="b-raw" title="Raw / rendered (⌘R)">Raw</button>
+  <button id="b-copy" title="Copy shown item back to the clipboard">Copy</button>
+  <button id="b-rtl" title="Copy with Hebrew lines wrapped in RLI…PDI, for pasting into apps without RTL support (⇧⌘C)">Copy RTL</button>
+  <button id="b-hold" title="Hold this item: this window stops following the clipboard (⌘L)">Hold</button>
+  <button id="b-hist" class="icon" title="History (⌘Y)"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h7"/></svg></button>
+  <button id="b-theme" class="icon" title="Appearance: System / Light / Dark"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5v11a5.5 5.5 0 0 0 0-11z" fill="currentColor"/></svg></button>
+  <button id="b-settings" class="icon" title="Settings (⌘,)"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/><circle cx="8" cy="8" r="4.6"/></svg></button>
+</header>
+<main>
+  <div id="content"><div class="empty">Copy something…</div></div>
+  <aside id="history"><input id="search" type="search" placeholder="Search history…"><div id="hlist"></div></aside>
+</main>
+
+<section id="settings">
+  <h2>Settings <button class="x" id="s-close" title="Close (Esc)">Done</button></h2>
+
+  <h3>Appearance</h3>
+  <div class="row"><span>Theme</span><div class="seg" data-key="theme">
+    <button data-v="system">System</button><button data-v="light">Light</button><button data-v="dark">Dark</button></div></div>
+  <div class="row"><span>Font</span><select data-key="font">
+    <option value="system">System</option><option value="rounded">Rounded</option><option value="serif">Serif</option><option value="mono">Monospaced</option></select></div>
+  <div class="row"><span>Text size <small id="zoom-label"></small></span><input type="range" data-key="zoom" min="0.6" max="2" step="0.05"></div>
+
+  <h3>Window</h3>
+  <div class="row"><span>Always on top</span><input type="checkbox" class="switch" data-key="onTop"></div>
+  <div class="row"><span>Show on all desktops</span><input type="checkbox" class="switch" data-key="allSpaces"></div>
+  <div class="row"><span>New monitor <small>Each window or tab follows the clipboard on its own; use Hold to keep one on a single item.</small></span>
+    <button id="s-newwin">New window ⌘N</button><button id="s-newtab">New tab ⌘T</button></div>
+
+  <h3>Startup &amp; shortcut</h3>
+  <div class="row" id="row-login"><span>Launch at login</span><input type="checkbox" class="switch" data-key="loginItem"></div>
+  <div class="row"><span>Show / hide shortcut <small>Works from any app.</small></span><select data-key="hotkey">
+    <option value="ctrl-opt-v">⌃⌥V</option><option value="ctrl-opt-cmd-v">⌃⌥⌘V</option><option value="ctrl-shift-v">⌃⇧V</option>
+    <option value="ctrl-opt-space">⌃⌥Space</option><option value="off">Off</option></select></div>
+
+  <h3>Content</h3>
+  <div class="row"><span>Render Markdown</span><input type="checkbox" class="switch" data-key="markdown"></div>
+  <div class="row"><span>Render rich text from web pages</span><input type="checkbox" class="switch" data-key="rich"></div>
+  <div class="row"><span>Syntax highlighting in code</span><input type="checkbox" class="switch" data-key="highlight"></div>
+  <div class="row"><span>Show copied images</span><input type="checkbox" class="switch" data-key="images"></div>
+
+  <h3>Direction (BiDi)</h3>
+  <div class="row"><span>Detection <small>Majority: a line is RTL when enough of its letters are Hebrew. First letter: the browser's own dir=auto rule.</small></span>
+    <select data-key="detect"><option value="majority">Majority</option><option value="first-strong">First letter</option></select></div>
+  <div class="row" id="row-ratio"><span>Hebrew share for RTL <small id="ratio-label"></small></span><input type="range" data-key="ratio" min="0.1" max="0.7" step="0.05"></div>
+
+  <h3>History &amp; privacy</h3>
+  <div class="row"><span>Keep history after quit <small>Saved only on this Mac. Password-manager items are never shown or saved.</small></span><input type="checkbox" class="switch" data-key="keepHistory"></div>
+  <div class="row"><span>History size</span><select data-key="maxHistory">
+    <option value="20">20</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></div>
+  <div class="row" style="display:block"><span>Ignore copies from these apps <small>App names or bundle IDs, comma separated (e.g. 1Password, Keychain Access).</small></span>
+    <textarea data-key="ignoredApps" spellcheck="false"></textarea></div>
+  <div class="row"><span>Clear history in all windows</span><button class="danger" id="s-clear">Clear</button></div>
+</section>
+<div id="toast" class="toast"></div>
+<div id="ctx" role="menu"></div>
+
+<script src="marked.min.js"></script>
+<script src="highlight.min.js"></script>
+<script src="bidi-fix.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  const native = (msg) => { try { window.webkit.messageHandlers.app.postMessage(msg); } catch (e) { (window.__sent = window.__sent || []).push(msg); } };
+  const MAX_SAVED_IMAGE = 400000; // data-URL chars; bigger images are shown but not kept across restarts
+
+  let S = { detect: 'majority', ratio: 0.3, rich: true, markdown: true, highlight: true, images: true, maxHistory: 50,
+            font: 'system', theme: 'system', zoom: 1, onTop: false, allSpaces: false, keepHistory: true, hotkey: 'ctrl-opt-v',
+            ignoredApps: '', loginItem: false, loginSupported: true };
+
+  // BiDi: majority detection per block (see toolkit README "Choosing the detection mode").
+  // Rich HTML from web pages often holds text directly in <div>s, so leaf divs count as blocks there.
+  const BIDI = {
+    blocks: 'p, h1, h2, h3, h4, h5, h6, blockquote, td, th, dd, dt, figcaption, .line, ' +
+            '.rich div:not(:has(div, p, ul, ol, table, pre, h1, h2, h3, h4, blockquote))',
+    editors: '#search, #settings textarea', detect: 'majority', ratio: 0.3, align: true,
+    forceLtr: 'pre, kbd, samp', isolateInline: 'a, code, kbd, strong, em, b, i',
+  };
+  const detectDir = (t) => window.__bidiFix.detectDir(t, BIDI);
+  const FONTS = {
+    system: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Arial Hebrew", sans-serif',
+    rounded: 'ui-rounded, "SF Pro Rounded", -apple-system, "Arial Hebrew", sans-serif',
+    serif: 'ui-serif, "New York", "Times New Roman", "Taamey Frank CLM", serif',
+    mono: 'ui-monospace, "SF Mono", Menlo, monospace',
+  };
+
+  // ---- "Copy RTL": same rule as text/bidi_text.py wrap (isolate mode) -------------------------------
+  const CONTROLS = /[⁦-⁩‪-‮‎‏؜]/g;
+  const HEB = /[֐-׿יִ-ﭏ؀-ۿ]/;
+  const PREFIX = /^(\s*(?:[-*+]\s+|\d+[.)]\s+|>\s*|#{1,6}\s+|\|\s*)*)/;
+  function wrapRtl(text) {
+    let inFence = false; // code inside ``` fences stays untouched
+    return text.split('\n').map((line) => {
+      const clean = line.replace(CONTROLS, '');
+      if (/^\s*(```|~~~)/.test(clean)) { inFence = !inFence; return clean; }
+      if (inFence || !clean.trim() || !HEB.test(clean)) return clean;
+      const pre = clean.match(PREFIX)[0], body = clean.slice(pre.length);
+      return body.trim() ? pre + '⁧' + body + '⁩' : clean;
+    }).join('\n');
+  }
+
+  // ---- formats --------------------------------------------------------------------------------------
+  // Raw HTML inside Markdown is shown as text, never executed.
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  marked.use({ gfm: true, breaks: true, renderer: { html(token) { return esc(token.text || token.raw || ''); } } });
+
+  function looksLikeMarkdown(t) {
+    if (!/\n/.test(t) && !/^#{1,6}\s|\*\*.+\*\*|\[.+\]\(.+\)|`[^`]+`/.test(t)) return false;
+    let score = 0;
+    const rules = [
+      [/^#{1,6}\s+\S/m, 2], [/^```/m, 3], [/^\s{0,3}[-*+]\s+\S/m, 1], [/^\s{0,3}\d+[.)]\s+\S/m, 1],
+      [/\*\*[^*\n]+\*\*|__[^_\n]+__/, 1], [/\[[^\]\n]+\]\([^)\s]+\)/, 2], [/^\s{0,3}>\s/m, 1],
+      [/^\|?.*\|.*\n\|?\s*:?-{3,}/m, 3], [/`[^`\n]+`/, 1], [/^\s*[-*_]{3,}\s*$/m, 1], [/^\s*- \[[ xX]\]/m, 2],
+    ];
+    for (const [re, w] of rules) if (re.test(t)) score += w;
+    return score >= 2;
+  }
+  function looksLikeJson(t) {
+    const s = t.trim();
+    if (!/^[\[{]/.test(s)) return null;
+    try { return JSON.stringify(JSON.parse(s), null, 2); } catch (e) { return null; }
+  }
+  // Rich HTML is worth showing only when it carries document structure. Code editors (VS Code etc.)
+  // put styled <div>/<span> soup on the clipboard; the plain text is the better view for those.
+  const STRUCTURAL = /<(p|h[1-6]|ul|ol|li|table|a\s|strong|em|blockquote|img)\b/i;
+
+  function classify(item) {
+    if (item.kind !== 'text') return item.kind;
+    if (S.rich && item.html && STRUCTURAL.test(item.html)) return 'rich';
+    if (looksLikeJson(item.text)) return 'json';
+    if (S.markdown && looksLikeMarkdown(item.text)) return 'markdown';
+    return 'text';
+  }
+
+  function sanitize(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('script, style, link, meta, title, base, iframe, frame, object, embed, form, input, button, select, textarea, noscript, template, svg, math')
+      .forEach((n) => n.remove());
+    doc.body.querySelectorAll('*').forEach((el) => {
+      for (const a of [...el.attributes]) {
+        const n = a.name.toLowerCase();
+        const keep = ['href', 'src', 'alt', 'title', 'colspan', 'rowspan', 'start'].includes(n);
+        if (!keep || ((n === 'href' || n === 'src') && /^\s*(javascript|vbscript|data:(?!image\/))/i.test(a.value))) el.removeAttribute(a.name);
+      }
+    });
+    return doc.body.innerHTML;
+  }
+
+  function highlight(root) {
+    if (!S.highlight) return;
+    root.querySelectorAll('pre code').forEach((code) => {
+      if (code.textContent.length > 30000) return;
+      const lang = (code.className.match(/language-([\w+#-]+)/) || [])[1];
+      try {
+        if (lang && hljs.getLanguage(lang)) hljs.highlightElement(code);
+        else {
+          const r = hljs.highlightAuto(code.textContent);
+          if (r.relevance >= 5) { code.innerHTML = r.value; code.classList.add('hljs'); }
+        }
+      } catch (e) { /* leave plain */ }
+    });
+  }
+
+  // Lists and tables take one direction from their whole text, so bullets stay on one side and
+  // column order is consistent; mixed items still render correctly inside that base direction.
+  function fixContainers(box) {
+    box.querySelectorAll('ul, ol').forEach((l) => l.setAttribute('dir', detectDir(l.innerText) || 'ltr'));
+    box.querySelectorAll('table').forEach((t) => t.setAttribute('dir', detectDir(t.innerText) || 'ltr'));
+    box.querySelectorAll('input[type=checkbox]').forEach((c) => c.setAttribute('disabled', ''));
+  }
+
+  function renderPlain(text) {
+    const box = document.createElement('div');
+    box.className = 'plain';
+    for (const line of text.replace(/\r\n?/g, '\n').split('\n')) {
+      const d = document.createElement('div');
+      d.className = 'line';
+      d.textContent = line;
+      box.appendChild(d);
+    }
+    return box;
+  }
+
+  // ---- state ----------------------------------------------------------------------------------------
+  let history = [];      // newest first: {kind, text?, html?, image?, app?, time, fmt}
+  let shownIndex = 0;
+  let raw = false;
+  let held = false;      // this window stays on the shown item instead of following the clipboard
+  let query = '';
+  let state = { paused: false };
+
+  function render() {
+    const c = $('#content');
+    c.innerHTML = '';
+    const item = history[shownIndex];
+    if (!item) { c.innerHTML = '<div class="empty">Copy something…</div>'; updateHeader(); return; }
+    const fmt = item.fmt;
+    if (fmt === 'image') {
+      if (S.images) {
+        c.innerHTML = '<div class="imgwrap"><img alt=""></div><p class="note"></p>';
+        c.querySelector('img').src = item.image;
+        c.querySelector('.note').textContent = 'Image ' + (item.size || '');
+      } else {
+        c.innerHTML = '<div class="empty"></div>';
+        c.firstChild.textContent = '🖼 Image ' + (item.size || '') + ' (hidden in Settings)';
+      }
+    } else if (fmt === 'secret') {
+      c.innerHTML = '<div class="empty">🔒 Hidden: the copying app marked this as a password/secret.</div>';
+    } else if (fmt === 'other') {
+      c.innerHTML = '<div class="empty"></div>';
+      c.firstChild.textContent = 'Non-text content (' + (item.types || 'unknown') + ')';
+    } else if (raw) {
+      const box = document.createElement('div'); box.className = 'raw';
+      box.textContent = item.text; c.appendChild(box);
+    } else if (fmt === 'json') {
+      const pre = document.createElement('pre'); const code = document.createElement('code');
+      code.className = 'language-json'; code.textContent = looksLikeJson(item.text);
+      pre.appendChild(code); c.appendChild(pre); highlight(c);
+    } else if (fmt === 'markdown' || fmt === 'rich') {
+      const box = document.createElement('div');
+      box.className = fmt === 'rich' ? 'md rich' : 'md';
+      box.innerHTML = fmt === 'rich' ? sanitize(item.html) : marked.parse(item.text);
+      c.appendChild(box);
+      fixContainers(box); highlight(box);
+    } else {
+      c.appendChild(renderPlain(item.text));
+    }
+    window.__bidiFix.install(BIDI);
+    c.scrollTop = 0;
+    updateHeader();
+  }
+
+  const LABEL = { markdown: 'Markdown', rich: 'Rich text', text: 'Text', json: 'JSON', image: 'Image', secret: 'Secret', other: 'Other' };
+  const timeStr = (t, sec) => new Date(t).toLocaleTimeString('he-IL', sec ? { hour: '2-digit', minute: '2-digit', second: '2-digit' } : { hour: '2-digit', minute: '2-digit' });
+  let lastTitle = '';
+  function updateHeader() {
+    const item = history[shownIndex];
+    $('#kind').textContent = item ? LABEL[item.fmt] : '—';
+    const bits = [];
+    if (item && item.app) bits.push(item.app);
+    if (item && item.time) {
+      const today = new Date(item.time).toDateString() === new Date().toDateString();
+      bits.push((today ? '' : new Date(item.time).toLocaleDateString('he-IL') + ' ') + timeStr(item.time, true));
+    }
+    if (item && item.text) bits.push(item.text.length.toLocaleString() + ' chars');
+    if (shownIndex > 0) bits.push('history ' + (shownIndex + 1) + '/' + history.length);
+    $('#src').textContent = bits.join(' · ');
+    const hasText = !!(item && item.text);
+    $('#b-raw').classList.toggle('on', raw);
+    $('#b-raw').disabled = !hasText;
+    $('#b-copy').disabled = !hasText;
+    $('#b-rtl').disabled = !hasText || !HEB.test(item.text);
+    $('#b-hold').classList.toggle('on', held);
+    $('#b-hist').classList.toggle('on', document.body.classList.contains('show-history'));
+    $('#b-settings').classList.toggle('on', document.body.classList.contains('show-settings'));
+    $('#paused').hidden = !state.paused;
+    // Window / tab title: "Clipboard" while live, the held item's first words while held.
+    const firstLine = (t) => (t.split('\n').map((l) => l.replace(/^\s*(#{1,6}|[-*+>]|\d+[.)])\s+/, '').trim()).find(Boolean) || '');
+    const title = held && item ? (firstLine(item.text || LABEL[item.fmt]).slice(0, 32) || 'Held') : 'Clipboard';
+    if (title !== lastTitle) { lastTitle = title; native({ cmd: 'title', title }); }
+    reportDragZones();
+  }
+
+  function renderHistory() {
+    const h = $('#hlist');
+    h.innerHTML = '';
+    const q = query.trim().toLowerCase();
+    let shown = 0;
+    const match = (it) => !q || (it.text || '').toLowerCase().includes(q) || (it.app || '').toLowerCase().includes(q);
+    const idx = history.map((it, i) => i).filter((i) => match(history[i]));
+    const pinned = idx.filter((i) => history[i].pinned), recent = idx.filter((i) => !history[i].pinned);
+    const section = (label) => { const d = document.createElement('div'); d.className = 'sec'; d.textContent = label; h.appendChild(d); };
+    const row = (i) => {
+      const it = history[i];
+      shown++;
+      const d = document.createElement('div');
+      d.className = 'item' + (i === shownIndex ? ' sel' : '') + (it.pinned ? ' pinned' : '');
+      d.dataset.index = i;
+      const t = document.createElement('div'); t.className = 't';
+      t.textContent = it.text ? it.text.slice(0, 200) : (it.fmt === 'image' ? '🖼 Image ' + (it.size || '') : it.fmt === 'secret' ? '🔒 Hidden' : '…');
+      const s = document.createElement('div'); s.className = 's';
+      if (it.pinned) s.innerHTML = '<span class="pin-mark">' + ICON_PIN + '</span>';
+      s.append([LABEL[it.fmt], it.app, timeStr(it.time)].filter(Boolean).join(' · '));
+      const acts = document.createElement('div'); acts.className = 'acts';
+      const bp = document.createElement('button'); bp.innerHTML = ICON_PIN; bp.title = it.pinned ? 'Unpin' : 'Pin';
+      bp.onclick = (e) => { e.stopPropagation(); op(it.pinned ? 'unpin' : 'pin', it); };
+      const bd = document.createElement('button'); bd.innerHTML = ICON_DEL; bd.title = 'Delete';
+      bd.onclick = (e) => { e.stopPropagation(); op('delete', it); };
+      acts.append(bp, bd);
+      d.append(t, s, acts);
+      d.onclick = () => { shownIndex = i; render(); renderHistory(); };
+      h.appendChild(d);
+    };
+    if (pinned.length) { section('Pinned'); pinned.forEach(row); if (recent.length) section('Recent'); }
+    recent.forEach(row);
+    if (!shown) h.innerHTML = '<div class="none">' + (q ? 'No matches' : 'Empty') + '</div>';
+  }
+
+  // Items are matched by content across windows (ids can differ between windows' histories).
+  const keyOf = (it) => it.text || it.image || it.id || String(it.time);
+  // Keep pinned items and the shown item; drop the oldest unpinned ones beyond the history size.
+  function trim() {
+    const max = Number(S.maxHistory) || 50;
+    const shownItem = history[shownIndex];
+    let n = 0;
+    history = history.filter((it) => it.pinned || ++n <= max || it === shownItem);
+    shownIndex = Math.max(0, history.indexOf(shownItem));
+  }
+  const ICON_PIN = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5l4 4-2.2 1-2.6 2.6.3 3-1.5.4-5-5 .4-1.5 3 .3 2.6-2.6z"/><path d="M5.5 10.5L2.5 13.5"/></svg>';
+  const ICON_DEL = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+
+  let saveTimer = null;
+  function save(now) {
+    clearTimeout(saveTimer);
+    const run = () => native({ cmd: 'saveHistory', items: exportHistory() });
+    if (now) run(); else saveTimer = setTimeout(run, 600);
+  }
+  function exportHistory() {
+    return history.filter((it) => it.fmt !== 'secret' && !(it.image && it.image.length > MAX_SAVED_IMAGE))
+      .map(({ fmt, self, ...rest }) => rest);
+  }
+
+  function toast(msg) {
+    const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove('show'), 1400);
+  }
+
+  // ---- settings panel -------------------------------------------------------------------------------
+  function setSetting(key, value) { S[key] = value; native({ cmd: 'set', key, value }); applySettings(); }
+
+  function fillSettingsForm() {
+    document.querySelectorAll('#settings [data-key]').forEach((el) => {
+      const k = el.dataset.key, v = S[k];
+      if (el.classList.contains('seg')) el.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+      else if (el.type === 'checkbox') el.checked = !!v;
+      else if (document.activeElement !== el) el.value = String(v);
+    });
+    $('#zoom-label').textContent = Math.round(S.zoom * 100) + '%';
+    $('#ratio-label').textContent = Math.round(S.ratio * 100) + '% of the letters';
+    $('#row-ratio').style.opacity = S.detect === 'majority' ? 1 : .4;
+    $('#row-login').style.display = S.loginSupported ? '' : 'none';
+  }
+
+  let renderedWith = '';
+  function applySettings() {
+    BIDI.detect = S.detect; BIDI.ratio = Number(S.ratio);
+    document.documentElement.style.setProperty('--font', FONTS[S.font] || FONTS.system);
+    trim();
+    // Re-render only when something that affects rendering changed.
+    const sig = [S.detect, S.ratio, S.rich, S.markdown, S.highlight, S.images].join('|');
+    if (sig !== renderedWith) {
+      renderedWith = sig;
+      history.forEach((it) => { it.fmt = classify(it); });
+      render(); renderHistory();
+    }
+    fillSettingsForm();
+  }
+
+  document.querySelectorAll('#settings [data-key]').forEach((el) => {
+    const k = el.dataset.key;
+    if (el.classList.contains('seg')) {
+      el.querySelectorAll('button').forEach((b) => { b.onclick = () => setSetting(k, b.dataset.v); });
+    } else if (el.type === 'checkbox') {
+      el.onchange = () => setSetting(k, el.checked);
+    } else if (el.type === 'range') {
+      el.oninput = () => { S[k] = Number(el.value); fillSettingsForm(); };
+      el.onchange = () => setSetting(k, Number(el.value));
+    } else if (el.tagName === 'TEXTAREA') {
+      let t; el.oninput = () => { clearTimeout(t); t = setTimeout(() => setSetting(k, el.value), 500); };
+    } else {
+      el.onchange = () => setSetting(k, k === 'maxHistory' ? Number(el.value) : el.value);
+    }
+  });
+  const THEMES = ['system', 'light', 'dark'];
+  $('#b-theme').onclick = () => {
+    const next = THEMES[(THEMES.indexOf(S.theme) + 1) % THEMES.length];
+    setSetting('theme', next);
+    toast('Appearance: ' + next[0].toUpperCase() + next.slice(1));
+  };
+  $('#b-settings').onclick = () => window.monitor.toggleSettings();
+  $('#s-close').onclick = () => window.monitor.toggleSettings(false);
+  $('#s-newwin').onclick = () => native({ cmd: 'newWindow' });
+  $('#s-newtab').onclick = () => native({ cmd: 'newTab' });
+  $('#s-clear').onclick = () => native({ cmd: 'clearAll' });
+
+  // Pin / unpin / delete go through the app so every window applies them.
+  function op(kind, it) { native({ cmd: 'historyOp', op: kind, key: keyOf(it) }); }
+
+  // ---- right-click menu ------------------------------------------------------------------------------
+  const ctx = $('#ctx');
+  function closeMenu() { ctx.classList.remove('show'); }
+  function openMenu(x, y, entries) {
+    ctx.innerHTML = '';
+    for (const e of entries) {
+      if (e === '-') { ctx.appendChild(document.createElement('hr')); continue; }
+      if (!e) continue;
+      const d = document.createElement('div');
+      d.className = 'mi' + (e.danger ? ' danger' : '');
+      d.textContent = e.label;
+      if (e.key) { const k = document.createElement('kbd'); k.textContent = e.key; d.appendChild(k); }
+      d.onclick = () => { closeMenu(); e.run(); };
+      ctx.appendChild(d);
+    }
+    ctx.classList.add('show');
+    const r = ctx.getBoundingClientRect();
+    ctx.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
+    ctx.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
+  }
+  function copyText(t, rtl) { native({ cmd: 'copy', text: rtl ? wrapRtl(t) : t }); toast(rtl ? 'Copied with RTL marks' : 'Copied'); }
+  function itemEntries(it, i, inContent) {
+    const sel = inContent ? String(window.getSelection() || '') : '';
+    return [
+      sel && { label: 'Copy Selection', run: () => copyText(sel) },
+      sel && HEB.test(sel) && { label: 'Copy Selection with RTL Marks', run: () => copyText(sel, true) },
+      sel && '-',
+      it.text && { label: 'Copy', run: () => copyText(it.text) },
+      it.text && HEB.test(it.text) && { label: 'Copy with RTL Marks', key: inContent ? '⇧⌘C' : '', run: () => copyText(it.text, true) },
+      it.text && '-',
+      { label: it.pinned ? 'Unpin' : 'Pin', run: () => op(it.pinned ? 'unpin' : 'pin', it) },
+      { label: 'Open in New Window', run: () => native({ cmd: 'openItem', id: keyOf(it) }) },
+      inContent ? { label: held ? 'Follow the Clipboard' : 'Hold This Item', key: '⌘L', run: () => window.monitor.toggleHold() }
+                : { label: 'Show', run: () => { shownIndex = i; render(); renderHistory(); } },
+      inContent && it.text && { label: raw ? 'Show Rendered' : 'Show Raw Text', key: '⌘R', run: () => window.monitor.toggleRaw() },
+      '-',
+      { label: 'Delete', danger: true, run: () => op('delete', it) },
+    ];
+  }
+  document.addEventListener('contextmenu', (e) => {
+    if (e.target.closest('input, textarea, select')) return;      // keep the native menu for editing fields
+    e.preventDefault();
+    const row = e.target.closest('#hlist .item');
+    if (row) { const i = Number(row.dataset.index); openMenu(e.clientX, e.clientY, itemEntries(history[i], i, false)); return; }
+    if (e.target.closest('#content') && history[shownIndex]) { openMenu(e.clientX, e.clientY, itemEntries(history[shownIndex], shownIndex, true)); return; }
+    closeMenu();
+  });
+  document.addEventListener('mousedown', (e) => { if (!e.target.closest('#ctx')) closeMenu(); });
+  window.addEventListener('blur', closeMenu);
+  document.getElementById('content').addEventListener('scroll', closeMenu);
+
+  // ---- API used by the app --------------------------------------------------------------------------
+  window.monitor = {
+    push(item) {
+      // Our own Copy / Copy RTL: the user already sees this content, don't add a near-duplicate.
+      if (item.self) return;
+      item = Object.assign({}, item);
+      item.time = item.time || Date.now();
+      item.fmt = classify(item);
+      const same = (a) => a && a.fmt === item.fmt && (item.text ? a.text === item.text : item.image ? a.image === item.image : false);
+      const dup = history.findIndex(same);
+      if (dup === 0 && (shownIndex === 0 || held)) { history[0].time = item.time; updateHeader(); return; }
+      let shownItem = history[shownIndex];
+      if (dup >= 0) {
+        item.pinned = history[dup].pinned;
+        if (history[dup] === shownItem) shownItem = item;
+        history.splice(dup, 1);
+      }
+      history.unshift(item);
+      if (held && shownItem) {
+        // keep showing the held item; only the history list moves
+        shownIndex = history.indexOf(shownItem);
+        trim();
+        updateHeader(); renderHistory();
+      } else {
+        shownIndex = 0;
+        trim();
+        render(); renderHistory();
+      }
+      save();
+    },
+    loadHistory(items) {
+      if (!Array.isArray(items)) return;
+      const byKey = new Map(history.map((h) => [keyOf(h), h]));
+      for (const it of items) {
+        const mine = byKey.get(keyOf(it));
+        if (mine) { if (it.pinned) mine.pinned = true; continue; }
+        it.fmt = classify(it); history.push(it);
+      }
+      const shownItem = history[shownIndex];
+      history.sort((a, b) => b.time - a.time);
+      shownIndex = Math.max(0, history.indexOf(shownItem));
+      trim();
+      render(); renderHistory();
+    },
+    exportHistory,
+    saveNow() { save(true); },
+    setSettings(s) { Object.assign(S, s); applySettings(); },
+    setState(s) { state = Object.assign(state, s); updateHeader(); },
+    setInsets(i) {
+      const r = document.documentElement.style;
+      r.setProperty('--pad-l', i.left + 'px'); r.setProperty('--pad-r', i.right + 'px'); r.setProperty('--pad-t', (i.top || 0) + 'px');
+      reportDragZones();
+    },
+    toggleRaw() { raw = !raw; render(); },
+    toggleHold() {
+      held = !held;
+      if (!held && shownIndex !== 0) { shownIndex = 0; render(); renderHistory(); }
+      toast(held ? 'Holding this item' : 'Following the clipboard');
+      updateHeader();
+    },
+    toggleHistory() {
+      document.body.classList.toggle('show-history'); updateHeader();
+      if (document.body.classList.contains('show-history')) $('#search').focus();
+    },
+    toggleSettings(force) {
+      const on = document.body.classList.toggle('show-settings', force);
+      if (on) fillSettingsForm();
+      updateHeader();
+    },
+    openSettings() { this.toggleSettings(true); },
+    // Clearing keeps pinned items and the item on screen.
+    clearHistory() {
+      const shownItem = history[shownIndex];
+      history = history.filter((it) => it.pinned || it === shownItem);
+      shownIndex = Math.max(0, history.indexOf(shownItem));
+      render(); renderHistory(); save(true);
+    },
+    applyOp({ op: kind, key }) {
+      const i = history.findIndex((it) => keyOf(it) === key);
+      if (i < 0) return;
+      if (kind === 'pin' || kind === 'unpin') { history[i].pinned = kind === 'pin'; renderHistory(); }
+      if (kind === 'delete') {
+        const shownItem = history[shownIndex];
+        history.splice(i, 1);
+        if (shownItem === undefined || history.indexOf(shownItem) < 0) { shownIndex = 0; held = false; render(); }
+        else shownIndex = history.indexOf(shownItem);
+        renderHistory(); updateHeader();
+      }
+      save();
+    },
+    showHeld({ id: key }) {
+      const i = history.findIndex((it) => keyOf(it) === key);
+      if (i < 0) return;
+      shownIndex = i; held = true; render(); renderHistory();
+    },
+    copyRtl() {
+      const it = history[shownIndex];
+      if (!it || !it.text) return;
+      native({ cmd: 'copy', text: wrapRtl(it.text) });
+      toast('Copied with RTL marks');
+    },
+  };
+
+  $('#b-raw').onclick = () => window.monitor.toggleRaw();
+  $('#b-hist').onclick = () => window.monitor.toggleHistory();
+  $('#b-hold').onclick = () => window.monitor.toggleHold();
+  $('#b-copy').onclick = () => { const it = history[shownIndex]; if (it && it.text) { native({ cmd: 'copy', text: it.text }); toast('Copied'); } };
+  $('#b-rtl').onclick = () => window.monitor.copyRtl();
+  $('#kind').ondblclick = () => native({ cmd: 'pause' });
+  $('#search').addEventListener('input', (e) => { query = e.target.value; renderHistory(); });
+  $('#search').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { const first = $('#hlist .item'); if (first) first.click(); }
+    if (e.key === 'Escape') { e.target.value = ''; query = ''; renderHistory(); e.target.blur(); }
+  });
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    e.preventDefault();
+    if (/^https?:|^mailto:/i.test(a.href)) native({ cmd: 'open', url: a.href });
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && ctx.classList.contains('show')) { closeMenu(); return; }
+    if (e.key === 'Escape' && document.body.classList.contains('show-settings')) { window.monitor.toggleSettings(false); return; }
+    if (e.target.closest && e.target.closest('input, textarea, select')) return;
+    if (e.key === 'ArrowDown' && shownIndex < history.length - 1) { shownIndex++; render(); renderHistory(); }
+    if (e.key === 'ArrowUp' && shownIndex > 0) { shownIndex--; render(); renderHistory(); }
+  });
+
+  // Tell the app which parts of the header are controls; the rest of the header drags the window.
+  function reportDragZones() {
+    const header = $('header');
+    const controls = [...document.querySelectorAll('header button, header .chip')].filter((e) => e.offsetParent)
+      .map((e) => { const r = e.getBoundingClientRect(); return [r.left - 2, r.top - 2, r.width + 4, r.height + 4]; });
+    native({ cmd: 'dragZones', header: header.getBoundingClientRect().bottom, controls });
+  }
+  new ResizeObserver(reportDragZones).observe($('header'));
+  window.addEventListener('resize', reportDragZones);
+  applySettings(); updateHeader(); renderHistory();
+})();
+</script>
+</body>
+</html>
