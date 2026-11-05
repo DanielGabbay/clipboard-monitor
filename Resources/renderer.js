@@ -17,12 +17,14 @@
       'tr.auto': 'Hebrew ↔ English (automatic)',
       'tr.fallback': 'AI translation failed ({error}), used on-device.', 'tr.fallbackNoError': 'AI translation failed, used on-device.',
       'tr.err.llm': 'AI translation failed: {error}',
+      'menu.translate': 'Translate', 'menu.rawText': 'Raw text', 'history.label': 'Clipboard history',
     },
     he: {
       'tr.translateTo': 'תרגם ל…', 'tr.translateToLang': 'תרגם ל{lang}', 'tr.more.title': 'תרגום לשפה אחרת',
       'tr.auto': 'עברית ↔ אנגלית (אוטומטי)',
       'tr.fallback': 'תרגום ה-AI נכשל ({error}), תורגם במכשיר.', 'tr.fallbackNoError': 'תרגום ה-AI נכשל, תורגם במכשיר.',
       'tr.err.llm': 'תרגום ה-AI נכשל: {error}',
+      'menu.translate': 'תרגם', 'menu.rawText': 'טקסט גולמי', 'history.label': 'היסטוריית הלוח',
     },
   });
 
@@ -173,7 +175,7 @@
     if (on('smartJwt') && single && /^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*$/.test(txt)) {
       try {
         const [h, p] = txt.split('.').slice(0, 2).map((x) => JSON.parse(b64decode(x)));
-        if (h && h.alg) return { title: t('smart.jwt'), build: (card) => {
+        if (h && h.alg) return { kind: 'jwt', title: t('smart.jwt'), build: (card) => {
           const now = Date.now();
           if (p.exp) {
             const exp = p.exp * 1000;
@@ -233,7 +235,7 @@
     if (on('smartBase64') && single && txt.length >= 12 && /^[A-Za-z0-9+/_-]+={0,2}$/.test(txt) && !/^\d+$/.test(txt)) {
       try {
         const dec = b64decode(txt);
-        if (printable(dec)) return { title: t('smart.base64'), build: (card) => {
+        if (printable(dec)) return { kind: 'base64', title: t('smart.base64'), build: (card) => {
           card.appendChild(elt('div', 'sub', t('smart.base64.decoded')));
           let parsed = null; try { parsed = JSON.parse(dec); } catch (e) { /* text */ }
           if (parsed && typeof parsed === 'object') card.appendChild(jsonView(parsed));
@@ -447,9 +449,12 @@
     try { return new Intl.DisplayNames([I18N.locale], { type: 'language' }).of(code) || code; } catch (e) { return code; }
   }
   const targetList = () => String(S.translateTargets || '').split(',').map((x) => x.trim()).filter(Boolean);
-  // Context-menu "Translate to <lang>" entries: the targets except Hebrew / English (the automatic entry covers
-  // them) and the one already shown; at most five so the menu stays short. The ▾ menu lists every target.
-  const menuTargets = (it) => targetList().filter((c) => c !== 'he' && c !== 'en' && !(hasTr(it) && it.trKey === c)).slice(0, 5);
+  // Context-menu "Translate ▸" submenu: Hebrew ↔ English (automatic) and every target, except the translation
+  // already on screen (Show original / Show translation covers that one).
+  const translateEntries = (it) => [{ key: 'auto', target: '', label: t('tr.auto') }]
+    .concat(targetList().map((code) => ({ key: code, target: code, label: langName(code) })))
+    .filter((x) => !(hasTr(it) && it.trKey === x.key))
+    .map((x) => ({ label: x.label, run: () => requestTranslation(it, x.target) }));
   // "on-device" for Apple; "model (Provider)" for the AI engine.
   function engineLabel(tr) {
     if (tr.engine !== 'llm') return t('tr.onDevice');
@@ -474,21 +479,31 @@
   const canCompare = () => on('compare') && history.filter((h) => h.text).length > 1;
 
   // The small "Translate to…" menu under the ▾ button.
-  function translateMenu(wrap, item) {
+  function translateMenu(wrap, item, opener) {
     const old = wrap.querySelector('.tr-menu');
-    if (old) { old.remove(); return; }
+    const close = (refocus) => {
+      const m = wrap.querySelector('.tr-menu'); if (m) m.remove();
+      if (opener) { opener.setAttribute('aria-expanded', 'false'); if (refocus && opener.isConnected) opener.focus(); }
+    };
+    if (old) { close(false); return; }
     const m = elt('div', 'tr-menu');
-    const title = elt('div', 'tm-title', t('tr.translateTo')); title.dir = I18N.dir; m.appendChild(title);
+    m.setAttribute('role', 'menu'); m.setAttribute('aria-label', t('tr.translateTo'));
+    const title = elt('div', 'tm-title', t('tr.translateTo')); title.dir = I18N.dir; title.setAttribute('role', 'presentation'); m.appendChild(title);
     const add = (labelText, target, langCode) => {
-      const d = elt('div', 'mi' + (item.trKey === trKeyOf(target) && hasTr(item) ? ' cur' : ''), labelText);
+      const cur = item.trKey === trKeyOf(target) && hasTr(item);
+      const d = menuItem(labelText, cur ? 'cur' : '');
+      if (cur) d.setAttribute('aria-current', 'true');
       d.dir = I18N.dir;   // the menu box follows the action bar; its rows follow the interface language
       if (langCode) d.lang = langCode;
-      d.onclick = (e) => { e.stopPropagation(); m.remove(); requestTranslation(item, target); };
+      d.onclick = (e) => { e.stopPropagation(); close(true); requestTranslation(item, target); };
       m.appendChild(d);
     };
     add(t('tr.auto'), '');
     for (const code of targetList()) add(langName(code), code);
+    menuKeys(m, { escape: () => close(true), tab: () => close(false) });
     wrap.appendChild(m);
+    if (opener) opener.setAttribute('aria-expanded', 'true');
+    const first = m.querySelector('.mi'); if (first) first.focus();
   }
   document.addEventListener('mousedown', (e) => {
     if (!(e.target.closest && e.target.closest('.tr-split'))) document.querySelectorAll('.tr-menu').forEach((m) => m.remove());
@@ -513,12 +528,16 @@
         }
         const more = elt('button', 'tr-more', '▾');
         more.title = t('tr.more.title'); more.setAttribute('aria-haspopup', 'menu');
-        more.onclick = (e) => { e.stopPropagation(); translateMenu(split, item); };
+        more.setAttribute('aria-expanded', 'false');
+        more.onclick = (e) => { e.stopPropagation(); translateMenu(split, item, more); };
         split.append(main, more);
         bar.appendChild(split);
         if (hasTr(item) && view === 'translation') {
-          const from = tr.from || '', to = tr.to || '';
-          bar.appendChild(elt('span', 'note tr-note', (from || to ? from + ' → ' + to + ' · ' : '') + engineLabel(tr)));
+          const from = langName(tr.from), to = langName(tr.to);
+          const arrow = I18N.dir === 'rtl' ? ' ← ' : ' → ';
+          const note = elt('span', 'note tr-note', (from || to ? from + arrow + to + ' · ' : '') + engineLabel(tr));
+          note.dir = I18N.dir;
+          bar.appendChild(note);
           if (tr.fallback) extras.push(elt('span', 'tr-warn', tr.fallback.error ? t('tr.fallback', { error: tr.fallback.error }) : t('tr.fallbackNoError')));
         }
       }
@@ -536,7 +555,7 @@
       const retry = () => { const r = elt('button', '', t('tr.tryAgain')); r.onclick = () => requestTranslation(item, target, true); return r; };
       const n = elt('div', 'card warn');
       if (tr.error === 'notInstalled') {
-        n.appendChild(elt('div', '', t('tr.err.notInstalled', { from: tr.from || '', to: tr.to || '' })));
+        n.appendChild(elt('div', '', t('tr.err.notInstalled', { from: langName(tr.from), to: langName(tr.to) })));
         const row = elt('div', 'row-btns'); const o = elt('button', '', t('tr.openLanguages'));
         o.onclick = () => native({ cmd: 'openTranslationSettings' }); row.append(o, retry()); n.appendChild(row);
       } else if (tr.error === 'unsupported') {
@@ -602,10 +621,19 @@
         renderBody(c, fmt === 'rich' ? classify({ kind: 'text', text }) : fmt, text);
       } else {
         const smart = detectSmart(item);
-        if (fmt !== 'json' || !smart) renderBody(c, fmt, text, item.html);
+        // JWT / Base64: the decoded card is what matters; the token itself follows, collapsed.
+        const cardFirst = !!smart && (smart.kind === 'jwt' || smart.kind === 'base64');
+        if (!cardFirst && (fmt !== 'json' || !smart)) renderBody(c, fmt, text, item.html);
         if (smart) {
           const card = elt('div', 'card'); card.appendChild(elt('div', 'card-title', smart.title));
-          try { smart.build(card); c.appendChild(card); } catch (e) { if (fmt === 'json') renderBody(c, fmt, text); }
+          let built = false;
+          try { smart.build(card); c.appendChild(card); built = true; } catch (e) { if (fmt === 'json' || cardFirst) renderBody(c, fmt, text, item.html); }
+          if (cardFirst && built) {
+            const det = elt('details', 'raw-text');
+            det.appendChild(elt('summary', '', t('menu.rawText')));
+            renderBody(det, fmt, text, item.html);
+            c.appendChild(det);
+          }
         }
       }
     }
@@ -617,25 +645,31 @@
   const label = (fmt) => t('fmt.' + fmt);
   const timeStr = (ms, sec) => new Date(ms).toLocaleTimeString(I18N.locale, sec ? { hour: '2-digit', minute: '2-digit', second: '2-digit' } : { hour: '2-digit', minute: '2-digit' });
   let lastTitle = '';
+  // Narrow window: #src drops the time so the header buttons don't squeeze it to nothing.
+  const narrow = () => innerWidth < 520;
+  let srcNarrow = narrow();
+  window.addEventListener('resize', () => { if (narrow() !== srcNarrow) updateHeader(); });
   function updateHeader() {
     const item = history[shownIndex];
     const smart = item && item.fmt === 'text' && detectSmart(item);
     $('#kind').textContent = item ? (smart ? smart.title : label(item.fmt)) : '—';
     const bits = [];
     if (item && item.app) bits.push(item.app);
-    if (item && item.time) {
+    if (item && item.time && !narrow()) {
       const today = new Date(item.time).toDateString() === new Date().toDateString();
       bits.push((today ? '' : new Date(item.time).toLocaleDateString(I18N.locale) + ' ') + timeStr(item.time, true));
     }
     if (item && item.text) bits.push(t('header.chars', { n: item.text.length.toLocaleString(I18N.locale) }));
     if (shownIndex > 0) bits.push(t('header.historyPos', { i: shownIndex + 1, n: history.length }));
     $('#src').textContent = bits.join(' · ');
+    srcNarrow = narrow();
     const hasText = !!(item && item.text);
     $('#b-raw').classList.toggle('on', raw);
     $('#b-raw').disabled = !hasText;
     $('#b-copy').disabled = !hasText;
-    $('#b-rtl').hidden = !on('copyRtl');
-    $('#b-rtl').disabled = !hasText || !HEB.test(shownText(item));
+    // Copy RTL only makes sense for text with Hebrew in it; hide it otherwise (a disabled button just takes room).
+    $('#b-rtl').hidden = !on('copyRtl') || !hasText || !HEB.test(shownText(item));
+    $('#b-rtl').disabled = false;
     $('#b-hold').classList.toggle('on', held);
     $('#b-hist').classList.toggle('on', document.body.classList.contains('show-history'));
     $('#b-settings').classList.toggle('on', document.body.classList.contains('show-settings'));
@@ -647,23 +681,40 @@
     reportDragZones();
   }
 
+  // History previews show Markdown as plain words: no heading / list / quote markers, ** or backticks.
+  function previewText(it) {
+    const s = it.text.slice(0, 600);
+    if (it.fmt !== 'markdown') return s.slice(0, 200);
+    return s.split('\n').filter((l) => !/^\s*(```|~~~)/.test(l))
+      .map((l) => l.replace(/^\s*(?:#{1,6}\s+|>\s?|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)+/, '')
+        .replace(/\[([^\]\n]+)\]\([^)\s]+\)/g, '$1').replace(/\*\*|__|`/g, ''))
+      .join('\n').slice(0, 200);
+  }
+
   function renderHistory() {
     const h = $('#hlist');
+    // Keep keyboard focus on the same item (or the same place, if it was deleted) across re-renders.
+    const ae = document.activeElement;
+    const fRow = ae && h.contains(ae) ? ae.closest('.item') : null;
+    const rowsBefore = [...h.querySelectorAll('.item')];
+    const focusItem = fRow ? fRow.item : null, focusPos = fRow ? rowsBefore.indexOf(fRow) : -1;
+    h.setAttribute('role', 'listbox'); h.setAttribute('aria-label', t('history.label'));
     h.innerHTML = '';
     const q = query.trim().toLowerCase();
     let shown = 0;
     const match = (it) => !q || (it.text || '').toLowerCase().includes(q) || (it.app || '').toLowerCase().includes(q);
     const idx = history.map((it, i) => i).filter((i) => match(history[i]));
     const pinned = idx.filter((i) => history[i].pinned), recent = idx.filter((i) => !history[i].pinned);
-    const section = (label) => { const d = document.createElement('div'); d.className = 'sec'; d.textContent = label; h.appendChild(d); };
+    const section = (label) => { const d = document.createElement('div'); d.className = 'sec'; d.setAttribute('role', 'presentation'); d.textContent = label; h.appendChild(d); };
     const row = (i) => {
       const it = history[i];
       shown++;
       const d = document.createElement('div');
       d.className = 'item' + (i === shownIndex ? ' sel' : '') + (it.pinned ? ' pinned' : '') + (it === compareWith ? ' cmp' : '');
-      d.dataset.index = i;
+      d.dataset.index = i; d.item = it;
+      d.tabIndex = 0; d.setAttribute('role', 'option'); d.setAttribute('aria-selected', String(i === shownIndex));
       const tx = document.createElement('div'); tx.className = 't';
-      tx.textContent = it.text ? it.text.slice(0, 200) : (it.fmt === 'image' ? '🖼 ' + t('content.image', { size: it.size || '' }) : it.fmt === 'secret' ? '🔒 ' + t('history.hidden') : '…');
+      tx.textContent = it.text ? previewText(it) : (it.fmt === 'image' ? '🖼 ' + t('content.image', { size: it.size || '' }) : it.fmt === 'secret' ? '🔒 ' + t('history.hidden') : '…');
       const s = document.createElement('div'); s.className = 's';
       if (it.pinned) s.innerHTML = '<span class="pin-mark">' + ICON_PIN + '</span>';
       s.append([label(it.fmt), it.app, timeStr(it.time)].filter(Boolean).join(' · '));
@@ -678,11 +729,31 @@
         if (picking && on('compare')) { picking = false; if (i !== shownIndex && it.text) compareWith = it; render(); renderHistory(); return; }
         shownIndex = i; render(); renderHistory();
       };
+      d.addEventListener('keydown', (e) => {
+        if (e.target !== d) return;   // the pin / delete buttons keep their own keys
+        const rows = [...h.querySelectorAll('.item')], k = rows.indexOf(d);
+        if (e.key === 'Enter' || e.key === ' ') d.click();
+        else if (e.key === 'Delete' || e.key === 'Backspace') op('delete', it);
+        else if (e.key === 'ArrowDown') { if (rows[k + 1]) rows[k + 1].focus(); }
+        else if (e.key === 'ArrowUp') { if (k > 0) rows[k - 1].focus(); else $('#search').focus(); }
+        else if (e.key === 'Home') rows[0].focus();
+        else if (e.key === 'End') rows[rows.length - 1].focus();
+        else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+          const r = d.getBoundingClientRect();
+          openMenu(I18N.dir === 'rtl' ? r.right : r.left, r.bottom, itemEntries(it, i, false));
+        } else return;
+        e.preventDefault(); e.stopPropagation();
+      });
       h.appendChild(d);
     };
     if (pinned.length) { section(t('history.pinned')); pinned.forEach(row); if (recent.length) section(t('history.recent')); }
     recent.forEach(row);
-    if (!shown) { h.innerHTML = '<div class="none"></div>'; h.firstChild.textContent = q ? t('history.noMatches') : t('history.empty'); }
+    if (!shown) { h.innerHTML = '<div class="none" role="presentation"></div>'; h.firstChild.textContent = q ? t('history.noMatches') : t('history.empty'); }
+    if (fRow) {
+      const rows = [...h.querySelectorAll('.item')];
+      const target = rows.find((r) => r.item === focusItem) || rows[Math.min(focusPos, rows.length - 1)];
+      (target || $('#search')).focus();
+    }
   }
 
   // Items are matched by content across windows (ids can differ between windows' histories).
@@ -731,27 +802,120 @@
   // Pin / unpin / delete go through the app so every window applies them.
   function op(kind, it) { native({ cmd: 'historyOp', op: kind, key: keyOf(it) }); }
 
+  // ---- menus: keyboard ------------------------------------------------------------------------------
+  // Arrow keys / Home / End move focus over the box's own .mi rows, Enter / Space activate, Escape and Tab call
+  // the handlers. `forward` (ArrowRight, ArrowLeft in RTL) opens a submenu, `back` (the other arrow) leaves one.
+  function menuKeys(box, { escape, tab, forward, back }) {
+    box.addEventListener('keydown', (e) => {
+      const list = [...box.querySelectorAll(':scope > .mi')];
+      const i = list.indexOf(document.activeElement);
+      const fwdKey = I18N.dir === 'rtl' ? 'ArrowLeft' : 'ArrowRight', backKey = I18N.dir === 'rtl' ? 'ArrowRight' : 'ArrowLeft';
+      const go = (k) => { if (list.length) list[(k + list.length) % list.length].focus(); };
+      switch (e.key) {
+        case 'ArrowDown': go(i + 1); break;
+        case 'ArrowUp': go(i < 0 ? -1 : i - 1); break;
+        case 'Home': go(0); break;
+        case 'End': go(-1); break;
+        case 'Enter': case ' ': if (list[i]) list[i].click(); break;
+        case 'Escape': if (escape) escape(); break;
+        case 'Tab': if (tab) tab(); break;
+        default:
+          if (e.key === fwdKey && forward && list[i] && list[i].getAttribute('aria-haspopup')) forward(list[i]);
+          else if (e.key === backKey && back) back();
+          else return;
+      }
+      e.preventDefault(); e.stopPropagation();
+    });
+  }
+  // One menu row: role menuitem, focusable by script only (the menu moves focus itself).
+  function menuItem(labelText, cls) {
+    const d = elt('div', 'mi' + (cls ? ' ' + cls : ''), labelText);
+    d.setAttribute('role', 'menuitem'); d.tabIndex = -1;
+    return d;
+  }
+
   // ---- right-click menu ------------------------------------------------------------------------------
+  // Entries: {label, key?, danger?, run} or {label, sub: [entries]} (a submenu, opened to the inline-end side), '-'.
   const ctx = $('#ctx');
-  function closeMenu() { ctx.classList.remove('show'); }
-  function openMenu(x, y, entries) {
-    ctx.innerHTML = '';
+  ctx.setAttribute('role', 'menu');
+  let menuOpener = null;   // element focused before the menu opened; focus goes back there on close
+  let subMenu = null;
+  function closeSub() {
+    if (!subMenu) return;
+    const p = subMenu.parentItem; subMenu.remove(); subMenu = null;
+    if (p) p.setAttribute('aria-expanded', 'false');
+  }
+  function closeMenu(restore) {
+    if (!ctx.classList.contains('show')) return;
+    closeSub();
+    ctx.classList.remove('show');
+    const back = menuOpener; menuOpener = null;
+    if (restore && back && back.isConnected && back.focus) back.focus();
+    if (ctx.contains(document.activeElement)) document.activeElement.blur();   // never leave focus in the hidden menu
+  }
+  function fillMenu(box, entries) {
     for (const e of entries) {
-      if (e === '-') { ctx.appendChild(document.createElement('hr')); continue; }
+      if (e === '-') { const hr = document.createElement('hr'); hr.setAttribute('role', 'separator'); box.appendChild(hr); continue; }
       if (!e) continue;
-      const d = document.createElement('div');
-      d.className = 'mi' + (e.danger ? ' danger' : '');
-      d.textContent = e.label;
+      const d = menuItem(e.label, e.danger ? 'danger' : '');
       if (e.key) { const k = document.createElement('kbd'); k.textContent = e.key; d.appendChild(k); }
-      d.onclick = () => { closeMenu(); e.run(); };
-      ctx.appendChild(d);
+      if (e.sub) {
+        d.setAttribute('aria-haspopup', 'menu'); d.setAttribute('aria-expanded', 'false'); d.subEntries = e.sub;
+        const arrow = elt('span', 'sub-arrow', I18N.dir === 'rtl' ? '◂' : '▸');
+        arrow.setAttribute('aria-hidden', 'true');
+        arrow.style.cssText = 'margin-inline-start:auto;padding-inline-start:12px;opacity:.6';   // like #ctx .mi kbd
+        d.appendChild(arrow);
+        d.onclick = (ev) => { ev.stopPropagation(); openSub(d, e.sub, true); };
+        d.onmouseenter = () => { if (!subMenu || subMenu.parentItem !== d) openSub(d, e.sub, false); };
+      } else {
+        d.onclick = (ev) => { ev.stopPropagation(); closeMenu(true); e.run(); };
+        if (box === ctx) d.onmouseenter = closeSub;
+      }
+      box.appendChild(d);
     }
+  }
+  function openMenu(x, y, entries) {
+    const wasOpen = ctx.classList.contains('show');
+    closeSub();
+    if (!wasOpen) menuOpener = document.activeElement;
+    ctx.innerHTML = '';
+    fillMenu(ctx, entries);
     ctx.classList.add('show');
     const r = ctx.getBoundingClientRect();
     const rtl = document.documentElement.dir === 'rtl';   // macOS opens menus to the left of the cursor in RTL
     ctx.style.left = Math.max(4, Math.min(rtl ? x - r.width : x, innerWidth - r.width - 4)) + 'px';
     ctx.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
+    const first = ctx.querySelector(':scope > .mi'); if (first) first.focus();
   }
+  // Submenu: a second panel inside #ctx (so #ctx .mi / hr styles apply), beside its row on the inline-end side.
+  function openSub(parentItem, entries, focusFirst) {
+    closeSub();
+    const sub = elt('div', 'ctx-sub');
+    sub.setAttribute('role', 'menu'); sub.setAttribute('aria-label', parentItem.firstChild.textContent);
+    // Panel look copied from #ctx (its rules are id-based).
+    const cs = getComputedStyle(ctx);
+    Object.assign(sub.style, { position: 'fixed', zIndex: '21', boxSizing: 'border-box', minWidth: '170px', maxHeight: (innerHeight - 8) + 'px',
+      overflowY: 'auto', padding: cs.padding, borderRadius: cs.borderRadius, background: cs.backgroundColor, border: cs.border, boxShadow: cs.boxShadow });
+    fillMenu(sub, entries);
+    sub.parentItem = parentItem;
+    ctx.appendChild(sub); subMenu = sub;
+    parentItem.setAttribute('aria-expanded', 'true');
+    menuKeys(sub, {
+      escape: () => { closeSub(); parentItem.focus(); }, back: () => { closeSub(); parentItem.focus(); },
+      tab: () => closeMenu(true),
+    });
+    const pr = parentItem.getBoundingClientRect(), sr = sub.getBoundingClientRect();
+    const rightFits = pr.right + sr.width <= innerWidth - 4, leftFits = pr.left - sr.width >= 4;
+    const toRight = I18N.dir === 'rtl' ? !leftFits && rightFits : rightFits || !leftFits;
+    const left = toRight ? pr.right + 2 : pr.left - sr.width - 2;
+    sub.style.left = Math.max(4, Math.min(left, innerWidth - sr.width - 4)) + 'px';
+    sub.style.top = Math.max(4, Math.min(pr.top - 5, innerHeight - sr.height - 4)) + 'px';
+    if (focusFirst) { const f = sub.querySelector('.mi'); if (f) f.focus(); }
+  }
+  menuKeys(ctx, {
+    escape: () => closeMenu(true), tab: () => closeMenu(true),
+    forward: (item) => openSub(item, item.subEntries, true),
+  });
   function copyText(text, rtl) { native({ cmd: 'copy', text: rtl ? wrapRtl(text) : text }); toast(rtl ? t('toast.copiedRtl') : t('toast.copied')); }
   function itemEntries(it, i, inContent) {
     const sel = inContent ? String(window.getSelection() || '') : '';
@@ -768,8 +932,7 @@
                 : { label: t('menu.show'), run: () => { shownIndex = i; render(); renderHistory(); } },
       inContent && it.text && { label: raw ? t('menu.showRendered') : t('menu.showRaw'), key: '⌘R', run: () => window.monitor.toggleRaw() },
       inContent && hasTr(it) && { label: view === 'translation' ? t('tr.showOriginal') : t('tr.showTranslation'), run: () => { view = view === 'translation' ? 'original' : 'translation'; render(); } },
-      inContent && translatable(it) && !(hasTr(it) && it.trKey === 'auto') && { label: autoLabel(it), run: () => requestTranslation(it, '') },
-      ...(inContent && translatable(it) ? menuTargets(it).map((code) => ({ label: t('tr.translateToLang', { lang: langName(code) }), run: () => requestTranslation(it, code) })) : []),
+      inContent && translatable(it) && { label: t('menu.translate'), sub: translateEntries(it) },
       !inContent && on('compare') && it.text && i !== shownIndex && history[shownIndex] && history[shownIndex].text && { label: t('menu.compareWithShown'), run: () => { compareWith = it; picking = false; render(); renderHistory(); } },
       inContent && compareWith && on('compare') && { label: t('menu.closeCompare'), run: () => { compareWith = null; render(); renderHistory(); } },
       '-',
@@ -784,7 +947,7 @@
     if (e.target.closest('#content') && history[shownIndex]) { openMenu(e.clientX, e.clientY, itemEntries(history[shownIndex], shownIndex, true)); return; }
     closeMenu();
   });
-  document.addEventListener('mousedown', (e) => { if (!e.target.closest('#ctx')) closeMenu(); });
+  document.addEventListener('mousedown', (e) => { if (!(e.target.closest && e.target.closest('#ctx'))) closeMenu(); });
   window.addEventListener('blur', closeMenu);
   document.getElementById('content').addEventListener('scroll', closeMenu);
 
@@ -934,6 +1097,7 @@
   $('#search').addEventListener('input', (e) => { query = e.target.value; renderHistory(); });
   $('#search').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { const first = $('#hlist .item'); if (first) first.click(); }
+    if (e.key === 'ArrowDown') { const first = $('#hlist .item'); if (first) { e.preventDefault(); first.focus(); } }
     if (e.key === 'Escape') { e.target.value = ''; query = ''; renderHistory(); e.target.blur(); }
   });
   document.addEventListener('click', (e) => {
@@ -943,7 +1107,7 @@
     if (/^https?:|^mailto:/i.test(a.href)) native({ cmd: 'open', url: a.href });
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && ctx.classList.contains('show')) { closeMenu(); return; }
+    if (e.key === 'Escape' && ctx.classList.contains('show')) { closeMenu(true); return; }
     if (e.key === 'Escape' && document.body.classList.contains('show-settings')) { window.monitor.toggleSettings(false); return; }
     if (e.key === 'Escape' && (picking || compareWith)) { picking = false; compareWith = null; render(); renderHistory(); return; }
     if (e.target.closest && e.target.closest('input, textarea, select')) return;
