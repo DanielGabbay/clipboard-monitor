@@ -1,42 +1,11 @@
 // Clipboard Monitor: small always-visible windows that show the clipboard with correct Hebrew/English (BiDi)
 // rendering, and render Markdown / rich text / code. AppKit shell + one WKWebView per window (or tab).
-// Rendering and the settings panel live in Resources/index.html; Resources/bidi-fix.js is the BiDi engine.
+// Rendering and the settings panel live in Resources/ (index.html + *.js); Resources/bidi-fix.js is the BiDi engine.
+// Other Swift files: Settings, Localization, Translation, AI/*, Version.
 import Cocoa
 import WebKit
 import Carbon
 import ServiceManagement
-import Translation
-
-// MARK: - Settings
-
-/// Every setting lives in UserDefaults as "s.<key>". The page sees the whole dictionary; keys it does not
-/// know about are native-only. Older builds stored a few keys without the prefix; those are still honoured.
-enum Settings {
-    static let d = UserDefaults.standard
-    static let defaults: [String: Any] = [
-        // window & app
-        "onTop": false, "allSpaces": false, "theme": "system", "zoom": 1.0, "hotkey": "ctrl-opt-v",
-        // history & privacy
-        "keepHistory": true, "maxHistory": 50, "ignoredApps": "",
-        // rendering (used by the page)
-        "detect": "majority", "ratio": 0.3, "rich": true, "markdown": true, "highlight": true, "images": true,
-        "font": "system",
-    ]
-    static func get(_ k: String) -> Any { d.object(forKey: "s." + k) ?? d.object(forKey: k) ?? defaults[k] ?? NSNull() }
-    static func set(_ k: String, _ v: Any) { d.set(v, forKey: "s." + k) }
-    static func bool(_ k: String) -> Bool { (get(k) as? NSNumber)?.boolValue ?? false }
-    static func double(_ k: String) -> Double { (get(k) as? NSNumber)?.doubleValue ?? 0 }
-    static func string(_ k: String) -> String { get(k) as? String ?? "" }
-    static var all: [String: Any] { var r: [String: Any] = [:]; for k in defaults.keys { r[k] = get(k) }; return r }
-}
-
-/// Global show/hide shortcuts offered in Settings. Carbon hot keys need no Accessibility permission.
-let hotKeyPresets: [String: (key: Int, mods: Int)] = [
-    "ctrl-opt-v": (kVK_ANSI_V, controlKey | optionKey),
-    "ctrl-opt-cmd-v": (kVK_ANSI_V, controlKey | optionKey | cmdKey),
-    "ctrl-shift-v": (kVK_ANSI_V, controlKey | shiftKey),
-    "ctrl-opt-space": (kVK_Space, controlKey | optionKey),
-]
 
 // MARK: - Web view that lets its header drag the window
 
@@ -173,6 +142,7 @@ final class MonitorController: NSObject, NSWindowDelegate, WKNavigationDelegate 
         let queued = pending; pending.removeAll()
         call("monitor.setSettings", app.settingsForPage())
         call("monitor.setState", app.stateForPage())
+        call("monitor.aiState", AIService.shared.stateForPage())
         sendInsets()
         queued.forEach { web.evaluateJavaScript($0, completionHandler: nil) }
         app.pageDidLoad(self)
@@ -204,7 +174,11 @@ final class MonitorController: NSObject, NSWindowDelegate, WKNavigationDelegate 
         case "newTab": app.newWindowForTab(nil)
         case "clearAll": app.clearAllHistory()
         case "translate":
-            if let text = body["text"] as? String, let req = body["req"] as? String { app.translate(text, req: req, for: self) }
+            if let text = body["text"] as? String, let req = body["req"] as? String {
+                TranslationRouter.translate(text, req: req, target: body["target"] as? String, for: self)
+            }
+        case "version": call("monitor.versionInfo", AppVersion.info())
+        case let c where c.hasPrefix("ai."): AIService.shared.handle(c, body, from: self)
         case "openTranslationSettings":
             if let url = URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension") { NSWorkspace.shared.open(url) }
         case "preview":
@@ -237,12 +211,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         "com.agilebits.onepassword", "de.petermaurer.TransientPasteboardType",
     ]
 
-    static let historyURL: URL = {
+    /// ~/Library/Application Support/Clipboard Monitor (history.json, ai-providers.json).
+    static let supportDir: URL = {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Clipboard Monitor", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("history.json")
+        return dir
     }()
+    static let historyURL = supportDir.appendingPathComponent("history.json")
 
     var current: MonitorController? {
         controllers.first { $0.window.isKeyWindow } ?? controllers.first { $0.window.isMainWindow } ?? controllers.first
@@ -256,6 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         for _ in 0..<count { _ = makeMonitor(tabbedWith: nil) }
         registerHotKey()
         enableLoginItemOnFirstRun()
+        AIService.shared.start()
         timer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { [weak self] _ in self?.poll() }
         RunLoop.main.add(timer!, forMode: .common)
         NSApp.activate(ignoringOtherApps: true)
@@ -372,49 +349,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return rep.representation(using: .png, properties: [:])
     }
 
-    // MARK: translation (on-device, Apple Translation framework)
-
-    /// Translates Hebrew <-> English line by line, so Markdown structure and code fences survive.
-    func translate(_ text: String, req: String, for c: MonitorController) {
-        let hebrew = text.unicodeScalars.filter { (0x0590...0x05FF).contains($0.value) }.count
-        let latin = text.unicodeScalars.filter { CharacterSet.letters.contains($0) && $0.value < 0x0250 }.count
-        let source = Locale.Language(identifier: hebrew >= latin ? "he" : "en")
-        let target = Locale.Language(identifier: hebrew >= latin ? "en" : "he")
-        let pair = ["from": hebrew >= latin ? "he" : "en", "to": hebrew >= latin ? "en" : "he"]
-        func reply(_ extra: [String: Any]) { c.call("monitor.translated", ["req": req].merging(pair) { a, _ in a }.merging(extra) { a, _ in a }) }
-
-        guard #available(macOS 26.0, *) else { reply(["error": "unsupported"]); return }
-        Task { @MainActor in
-            let status = await LanguageAvailability().status(from: source, to: target)
-            guard status == .installed else { reply(["error": status == .supported ? "notInstalled" : "unsupported"]); return }
-            do {
-                let session = TranslationSession(installedSource: source, target: target)
-                // Translate only prose lines; keep fences, blank lines and Markdown prefixes as they are.
-                var lines = text.components(separatedBy: "\n")
-                var inFence = false
-                var requests: [TranslationSession.Request] = []
-                var prefixes: [String: String] = [:]
-                let prefixRE = try NSRegularExpression(pattern: "^(\\s*(?:[-*+]\\s+(?:\\[[ xX]\\]\\s+)?|\\d+[.)]\\s+|>\\s*|#{1,6}\\s+)*)")
-                for (i, line) in lines.enumerated() {
-                    let trimmed = line.trimmingCharacters(in: .whitespaces)
-                    if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") { inFence.toggle(); continue }
-                    if inFence || trimmed.isEmpty || !trimmed.contains(where: { $0.isLetter }) { continue }
-                    let ns = line as NSString
-                    let m = prefixRE.firstMatch(in: line, range: NSRange(location: 0, length: ns.length))
-                    let pre = m.map { ns.substring(with: $0.range) } ?? ""
-                    let body = ns.substring(from: pre.utf16.count)
-                    prefixes[String(i)] = pre
-                    requests.append(.init(sourceText: body, clientIdentifier: String(i)))
-                }
-                for r in try await session.translations(from: requests) {
-                    if let id = r.clientIdentifier, let i = Int(id) { lines[i] = (prefixes[id] ?? "") + r.targetText }
-                }
-                reply(["text": lines.joined(separator: "\n")])
-            } catch {
-                reply(["error": error.localizedDescription])
-            }
-        }
-    }
 
     // MARK: link preview (only when the user asks for it)
 
@@ -485,6 +419,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func settingsForPage() -> [String: Any] {
         var s = Settings.all
         s["loginItem"] = loginItemEnabled
+        s["uiLangResolved"] = Loc.lang
         if #available(macOS 13.0, *) { s["loginSupported"] = true } else { s["loginSupported"] = false }
         return s
     }
@@ -508,6 +443,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case "theme": applyTheme()
         case "zoom": controllers.forEach { $0.web.pageZoom = Settings.double("zoom"); $0.sendInsets() }
         case "hotkey": registerHotKey()
+        case "uiLang": buildMenu()
         case "keepHistory":
             if Settings.bool("keepHistory") { controllers.first?.js("window.monitor.saveNow()") }
             else { try? FileManager.default.removeItem(at: Self.historyURL) }
@@ -566,7 +502,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
         } catch {
-            let a = NSAlert(); a.messageText = "Could not change Launch at Login"; a.informativeText = error.localizedDescription; a.runModal()
+            let a = NSAlert(); a.messageText = L("alert.loginItem.title"); a.informativeText = error.localizedDescription; a.runModal()
         }
         if SMAppService.mainApp.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
     }
@@ -629,61 +565,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         let appItem = NSMenuItem(); main.addItem(appItem)
         let app = NSMenu()
-        add(app, "About Clipboard Monitor", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), "")
+        add(app, L("menu.app.about"), #selector(NSApplication.orderFrontStandardAboutPanel(_:)), "")
         app.addItem(.separator())
-        add(app, "Settings…", #selector(openSettings(_:)), ",", target: self)
-        add(app, "Launch at Login", #selector(toggleLoginItem(_:)), "", target: self)
+        add(app, L("menu.app.settings"), #selector(openSettings(_:)), ",", target: self)
+        add(app, L("menu.app.loginItem"), #selector(toggleLoginItem(_:)), "", target: self)
         app.addItem(.separator())
-        add(app, "Hide", #selector(NSApplication.hide(_:)), "h")
-        add(app, "Quit Clipboard Monitor", #selector(NSApplication.terminate(_:)), "q")
+        add(app, L("menu.app.hide"), #selector(NSApplication.hide(_:)), "h")
+        add(app, L("menu.app.quit"), #selector(NSApplication.terminate(_:)), "q")
         appItem.submenu = app
 
         let fileItem = NSMenuItem(); main.addItem(fileItem)
-        let file = NSMenu(title: "File")
-        add(file, "New Window", #selector(newWindow(_:)), "n", target: self)
-        add(file, "New Tab", #selector(newWindowForTab(_:)), "t", target: self)
+        let file = NSMenu(title: L("menu.file"))
+        add(file, L("menu.file.newWindow"), #selector(newWindow(_:)), "n", target: self)
+        add(file, L("menu.file.newTab"), #selector(newWindowForTab(_:)), "t", target: self)
         file.addItem(.separator())
-        add(file, "Close", #selector(NSWindow.performClose(_:)), "w")
+        add(file, L("menu.file.close"), #selector(NSWindow.performClose(_:)), "w")
         fileItem.submenu = file
 
         let editItem = NSMenuItem(); main.addItem(editItem)
-        let edit = NSMenu(title: "Edit")
-        add(edit, "Copy", #selector(NSText.copy(_:)), "c")
-        add(edit, "Select All", #selector(NSText.selectAll(_:)), "a")
-        add(edit, "Copy with RTL Marks", #selector(copyRtl(_:)), "c", [.command, .shift], target: self)
+        let edit = NSMenu(title: L("menu.edit"))
+        add(edit, L("menu.edit.copy"), #selector(NSText.copy(_:)), "c")
+        add(edit, L("menu.edit.selectAll"), #selector(NSText.selectAll(_:)), "a")
+        add(edit, L("menu.edit.copyRtl"), #selector(copyRtl(_:)), "c", [.command, .shift], target: self)
         editItem.submenu = edit
 
         let viewItem = NSMenuItem(); main.addItem(viewItem)
-        let view = NSMenu(title: "View")
-        let themeItem = NSMenuItem(title: "Appearance", action: nil, keyEquivalent: "")
-        let theme = NSMenu(title: "Appearance")
-        add(theme, "System", #selector(setThemeSystem(_:)), "", target: self)
-        add(theme, "Light", #selector(setThemeLight(_:)), "", target: self)
-        add(theme, "Dark", #selector(setThemeDark(_:)), "", target: self)
+        let view = NSMenu(title: L("menu.view"))
+        let themeItem = NSMenuItem(title: L("menu.view.appearance"), action: nil, keyEquivalent: "")
+        let theme = NSMenu(title: L("menu.view.appearance"))
+        add(theme, L("menu.view.appearance.system"), #selector(setThemeSystem(_:)), "", target: self)
+        add(theme, L("menu.view.appearance.light"), #selector(setThemeLight(_:)), "", target: self)
+        add(theme, L("menu.view.appearance.dark"), #selector(setThemeDark(_:)), "", target: self)
         themeItem.submenu = theme
         view.addItem(themeItem)
         view.addItem(.separator())
-        add(view, "Always on Top", #selector(toggleOnTop(_:)), "t", [.command, .shift], target: self)
-        add(view, "Show on All Desktops", #selector(toggleAllSpaces(_:)), "", target: self)
-        add(view, "Pause Monitoring", #selector(togglePause(_:)), "p", [.command, .shift], target: self)
+        add(view, L("menu.view.onTop"), #selector(toggleOnTop(_:)), "t", [.command, .shift], target: self)
+        add(view, L("menu.view.allSpaces"), #selector(toggleAllSpaces(_:)), "", target: self)
+        add(view, L("menu.view.pause"), #selector(togglePause(_:)), "p", [.command, .shift], target: self)
         view.addItem(.separator())
-        add(view, "Hold This Item (stop following)", #selector(toggleHold(_:)), "l", target: self)
-        add(view, "Raw / Rendered", #selector(toggleRaw(_:)), "r", target: self)
-        add(view, "History", #selector(toggleHistory(_:)), "y", target: self)
-        add(view, "Clear History", #selector(clearHistory(_:)), "k", target: self)
+        add(view, L("menu.view.hold"), #selector(toggleHold(_:)), "l", target: self)
+        add(view, L("menu.view.raw"), #selector(toggleRaw(_:)), "r", target: self)
+        add(view, L("menu.view.history"), #selector(toggleHistory(_:)), "y", target: self)
+        add(view, L("menu.view.clearHistory"), #selector(clearHistory(_:)), "k", target: self)
         view.addItem(.separator())
-        add(view, "Zoom In", #selector(zoomIn(_:)), "+", target: self)
-        add(view, "Zoom In", #selector(zoomIn(_:)), "=", target: self)
-        add(view, "Zoom Out", #selector(zoomOut(_:)), "-", target: self)
-        add(view, "Actual Size", #selector(zoomReset(_:)), "0", target: self)
+        add(view, L("menu.view.zoomIn"), #selector(zoomIn(_:)), "+", target: self)
+        add(view, L("menu.view.zoomIn"), #selector(zoomIn(_:)), "=", target: self)
+        add(view, L("menu.view.zoomOut"), #selector(zoomOut(_:)), "-", target: self)
+        add(view, L("menu.view.actualSize"), #selector(zoomReset(_:)), "0", target: self)
         view.addItem(.separator())
-        add(view, "Snap to Right Edge", #selector(snapRight(_:)), "", target: self)
+        add(view, L("menu.view.snapRight"), #selector(snapRight(_:)), "", target: self)
         viewItem.submenu = view
 
         let winItem = NSMenuItem(); main.addItem(winItem)
-        let win = NSMenu(title: "Window")
-        add(win, "Show / Hide Monitors", #selector(showAll(_:)), "1", target: self)
-        add(win, "Minimize", #selector(NSWindow.miniaturize(_:)), "m")
+        let win = NSMenu(title: L("menu.window"))
+        add(win, L("menu.window.showHide"), #selector(showAll(_:)), "1", target: self)
+        add(win, L("menu.window.minimize"), #selector(NSWindow.miniaturize(_:)), "m")
         win.addItem(.separator())
         winItem.submenu = win
         NSApp.windowsMenu = win
