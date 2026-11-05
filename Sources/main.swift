@@ -565,7 +565,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         let appItem = NSMenuItem(); main.addItem(appItem)
         let app = NSMenu()
-        add(app, L("menu.app.about"), #selector(NSApplication.orderFrontStandardAboutPanel(_:)), "")
+        add(app, L("menu.app.about"), #selector(AppVersion.AboutTarget.showAbout(_:)), "", target: AppVersion.aboutTarget)
         app.addItem(.separator())
         add(app, L("menu.app.settings"), #selector(openSettings(_:)), ",", target: self)
         add(app, L("menu.app.loginItem"), #selector(toggleLoginItem(_:)), "", target: self)

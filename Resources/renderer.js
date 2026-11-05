@@ -746,7 +746,8 @@
     }
     ctx.classList.add('show');
     const r = ctx.getBoundingClientRect();
-    ctx.style.left = Math.max(4, Math.min(x, innerWidth - r.width - 4)) + 'px';
+    const rtl = document.documentElement.dir === 'rtl';   // macOS opens menus to the left of the cursor in RTL
+    ctx.style.left = Math.max(4, Math.min(rtl ? x - r.width : x, innerWidth - r.width - 4)) + 'px';
     ctx.style.top = Math.max(4, Math.min(y, innerHeight - r.height - 4)) + 'px';
   }
   function copyText(text, rtl) { native({ cmd: 'copy', text: rtl ? wrapRtl(text) : text }); toast(rtl ? t('toast.copiedRtl') : t('toast.copied')); }
@@ -900,7 +901,8 @@
       else {
         // fallbackFrom: the AI engine failed and Apple translated instead. It may be a string ('llm') with the
         // reason in fallbackError, or an object {engine, model, error}.
-        const fb = r.fallbackFrom ? { error: (typeof r.fallbackFrom === 'object' && r.fallbackFrom.error) || r.fallbackError || '' } : null;
+        const fb = r.fallbackFrom ? { error: typeof r.fallbackFrom === 'object' ? (r.fallbackFrom.error || '')
+          : (r.fallbackError || (r.fallbackFrom !== 'llm' ? r.fallbackFrom : '')) } : null;
         it.translations[key] = Object.assign(base, { text: r.text, fallback: fb });
       }
       const shown = it === history[shownIndex] && it.trKey === key;

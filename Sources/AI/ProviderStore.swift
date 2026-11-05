@@ -72,6 +72,10 @@ struct AIProvider: Codable {
 
     /// Merges a fresh model list: new models come in hidden and marked new, models that disappeared are kept and
     /// marked missing, models that came back lose the missing mark. Returns the ids that were added.
+    /// The first list of a provider comes in visible when it is short (a fresh provider should not look empty);
+    /// long first lists (OpenRouter returns hundreds) come in hidden and marked new like later additions.
+    static let firstListVisibleLimit = 30
+
     @discardableResult
     mutating func mergeModels(_ remote: [RemoteModel]) -> [String] {
         var seen = Set<String>()
@@ -80,7 +84,8 @@ struct AIProvider: Codable {
         let known = Set(models.map { $0.id })
         for i in models.indices { models[i].missing = !ids.contains(models[i].id) }
         let added = fresh.filter { !known.contains($0.id) }
-        models += added.map { AIModel(id: $0.id, label: $0.label, hidden: true, isNew: true) }
+        let firstVisible = models.isEmpty && added.count <= Self.firstListVisibleLimit
+        models += added.map { AIModel(id: $0.id, label: $0.label, hidden: !firstVisible, isNew: !firstVisible) }
         return added.map { $0.id }
     }
 }

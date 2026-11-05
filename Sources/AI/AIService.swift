@@ -137,7 +137,7 @@ final class AIService {
         let isNew = existing == nil
         if let i = existing { providers[i] = p } else { providers.append(p) }
         commit()
-        // A new provider fetches its model list right away (the models arrive hidden and marked new).
+        // A new provider fetches its model list right away (a short first list arrives visible, a long one hidden).
         if isNew && p.enabled {
             let id = p.id
             Task { [weak c] in await self.refresh(id, asker: c) }
