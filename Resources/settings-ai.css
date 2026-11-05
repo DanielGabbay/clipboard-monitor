@@ -1,18 +1,5 @@
 /* Settings › AI tab. Logical properties only, so the tab works in both directions (<html dir="rtl"> for Hebrew). */
 
-/* TEMP until app.css .btn lands: minimal copy of the shared button system, LTR-field placeholder rule and focus
-   ring from docs/UI-REVIEW-1.md, scoped to this tab. The integrator deletes this whole block. */
-#settings .ai-tab .btn { border-color: var(--line); background: var(--panel); white-space: nowrap; display: inline-flex;
-  align-items: center; gap: 5px; }
-#settings .ai-tab .btn:hover { border-color: var(--muted); }
-#settings .ai-tab .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
-#settings .ai-tab .btn.primary:hover { filter: brightness(1.08); }
-#settings .ai-tab .btn.danger { color: var(--danger, #d33); }
-#settings .ai-tab .btn.sm { padding: 1px 6px; font-size: 11.5px; }
-#settings .ai-tab :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-html[dir=rtl] #settings .ai-tab input[dir=ltr]:placeholder-shown { direction: rtl; text-align: right; }
-/* end TEMP */
-
 #settings .ai-tab { --ai-ok: #2e9d4f; --ai-bad: var(--danger, #d33);
   --ai-mono: ui-monospace, "SF Mono", Menlo, "Arial Hebrew", monospace; font-size: 13px; }
 @media (prefers-color-scheme: dark) { #settings .ai-tab { --ai-ok: #4cc472; --ai-bad: var(--danger, #ff6b6b); } }
