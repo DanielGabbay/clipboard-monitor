@@ -13,9 +13,11 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
   font: 15px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Arial Hebrew", sans-serif; }
 body { display: flex; flex-direction: column; overflow: hidden; }
 
-/* Title-bar area: the window uses a transparent full-size title bar, so leave room for the traffic lights. */
+/* Title-bar area: the window uses a transparent full-size title bar, so leave room for the traffic lights.
+   --pad-l / --pad-r are physical sides set by the app (macOS puts the buttons on the right in RTL languages),
+   so the padding stays physical while the header content follows the UI direction. */
 header { flex: none; display: flex; align-items: center; gap: 2px; height: 38px; padding: 0 var(--pad-r, 10px) 0 var(--pad-l, 78px);
-  border-bottom: 1px solid var(--line); -webkit-user-select: none; user-select: none; direction: ltr; }
+  border-bottom: 1px solid var(--line); -webkit-user-select: none; user-select: none; }
 header .meta { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; margin-inline-end: 4px; font-size: 12px; color: var(--muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chip { font-size: 11px; padding: 1px 7px; border-radius: 9px; background: var(--chip); color: var(--accent); font-weight: 600; }
@@ -27,8 +29,13 @@ button.on { color: var(--accent); border-color: var(--accent); }
 
 main { flex: 1; display: flex; min-height: 0; }
 #content { flex: 1; overflow: auto; padding: 14px 18px 40px; overflow-wrap: anywhere; }
+/* The clipboard text itself does not follow the UI direction: its containers are LTR and every block inside
+   gets its own dir from bidi-fix.js (a dir attribute on a child wins over the inherited direction). The chrome
+   around it inside #content (action bar, cards, diff header, notes) follows the UI. */
+#content :is(.md, .plain, .raw) { direction: ltr; }
+#content .diff .line:not([dir]) { direction: ltr; }
 #history { flex: none; width: 210px; border-inline-start: 1px solid var(--line); overflow: auto; background: var(--panel);
-  display: none; direction: ltr; }
+  display: none; }
 body.show-history #history { display: block; }
 #history .item { padding: 7px 10px; border-bottom: 1px solid var(--line); font-size: 12px; line-height: 1.4; cursor: default; }
 #history .item:hover { background: var(--bg); }
@@ -85,7 +92,7 @@ button:disabled { opacity: .35; }
 
 /* Settings panel: an overlay over the content area of this window. */
 #settings { position: absolute; inset: 0; top: calc(38px + var(--pad-t, 0px)); background: var(--bg); overflow: auto;
-  padding: 14px 18px 30px; display: none; direction: ltr; z-index: 5; }
+  padding: 14px 18px 30px; display: none; z-index: 5; }
 body.show-settings #settings { display: block; }
 #settings h2 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; }
 #settings h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; }
@@ -101,16 +108,19 @@ body.show-settings #settings { display: block; }
 #settings input[type=range] { width: 120px; }
 #settings .switch { appearance: none; -webkit-appearance: none; width: 34px; height: 20px; border-radius: 10px;
   background: var(--line); position: relative; flex: none; transition: background .15s; margin: 0; }
-#settings .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
-  background: #fff; box-shadow: 0 1px 2px #0004; transition: left .15s; }
+#settings .switch::after { content: ""; position: absolute; top: 2px; inset-inline-start: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px #0004; transition: transform .15s; }
 #settings .switch:checked { background: var(--accent); }
-#settings .switch:checked::after { left: 16px; }
+/* The knob slides toward the inline end: right in LTR, left in RTL (transform, not a logical inset, so the
+   animation never goes stale when the page direction flips). */
+#settings .switch:checked::after { transform: translateX(14px); }
+html[dir="rtl"] #settings .switch:checked::after { transform: translateX(-14px); }
 #settings .danger { color: #d33; border-color: var(--line); }
 
 /* History: pinned section, hover actions */
 #history .sec { padding: 8px 10px 3px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 #history .item { position: relative; }
-#history .item .acts { position: absolute; top: 4px; right: 4px; display: none; gap: 2px; background: var(--bg);
+#history .item .acts { position: absolute; top: 4px; inset-inline-end: 4px; display: none; gap: 2px; background: var(--bg);
   border: 1px solid var(--line); border-radius: 6px; padding: 1px; }
 #history .item:hover .acts { display: flex; }
 #history .item .acts button { padding: 2px 4px; line-height: 0; border-radius: 4px; }
@@ -118,28 +128,28 @@ body.show-settings #settings { display: block; }
 
 /* Right-click menu */
 #ctx { position: fixed; z-index: 20; min-width: 190px; padding: 4px; border-radius: 8px; background: var(--panel);
-  border: 1px solid var(--line); box-shadow: 0 8px 28px #0003; display: none; direction: ltr; font-size: 13px; }
+  border: 1px solid var(--line); box-shadow: 0 8px 28px #0003; display: none; font-size: 13px; }
 #ctx.show { display: block; }
 #ctx .mi { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 5px; cursor: default; white-space: nowrap; }
 #ctx .mi:hover { background: var(--accent); color: #fff; }
-#ctx .mi kbd { margin-left: auto; opacity: .6; font-family: inherit; font-size: 11.5px; }
+#ctx .mi kbd { margin-inline-start: auto; padding-inline-start: 12px; opacity: .6; font-family: inherit; font-size: 11.5px; }
 #ctx .mi.danger { color: #d33; }
 #ctx .mi.danger:hover { background: #d33; color: #fff; }
 #ctx hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px; }
 
 /* Action bar, smart cards, diff */
-.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: -4px 0 10px; direction: ltr; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: -4px 0 10px; }
 .actions button, .row-btns button { border-color: var(--line); background: var(--panel); }
 .actions button.on { color: var(--accent); border-color: var(--accent); }
 .card { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel);
-  direction: ltr; text-align: left; font-size: 13px; }
+  text-align: start; font-size: 13px; }
 .card.warn { border-color: var(--warn); }
 .card-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
 .card .sub { font-size: 11px; color: var(--muted); margin: 10px 0 3px; font-weight: 600; }
 .card .big { font-size: 16px; font-weight: 600; unicode-bidi: plaintext; text-align: start; }
 .card .note { margin: 4px 0; }
 .kv { border-collapse: collapse; width: 100%; }
-.kv th { text-align: left; color: var(--muted); font-weight: 500; padding: 2px 12px 2px 0; white-space: nowrap; vertical-align: top; width: 1%; }
+.kv th { text-align: start; color: var(--muted); font-weight: 500; padding: 2px 12px 2px 0; white-space: nowrap; vertical-align: top; width: 1%; }
 .kv td { padding: 2px 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; word-break: break-all; unicode-bidi: plaintext; }
 .kv td.copy:hover { color: var(--accent); cursor: pointer; }
 .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 9px; margin-bottom: 6px; }
@@ -147,10 +157,10 @@ body.show-settings #settings { display: block; }
 .swatch { height: 56px; border-radius: 7px; border: 1px solid var(--line); margin-bottom: 8px;
   box-shadow: inset 0 0 0 100px transparent; }
 .row-btns { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
-.jq { flex: 1; min-width: 140px; font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: var(--fg); background: var(--bg);
+.jq { direction: ltr; text-align: left; flex: 1; min-width: 140px; font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: var(--fg); background: var(--bg);
   border: 1px solid var(--line); border-radius: 6px; padding: 4px 7px; outline: none; }
 .jq:focus { border-color: var(--accent); }
-.jtree { margin-top: 8px; font: 12.5px/1.55 ui-monospace, "SF Mono", Menlo, monospace; overflow-x: auto; }
+.jtree { direction: ltr; text-align: left; margin-top: 8px; font: 12.5px/1.55 ui-monospace, "SF Mono", Menlo, monospace; overflow-x: auto; }
 .jnode > summary { cursor: default; color: var(--muted); list-style: revert; }
 .jnode .jrow { padding-left: 18px; white-space: pre-wrap; word-break: break-word; }
 .jkey { color: #a0479b; } .j-string { color: #2a7a3b; unicode-bidi: plaintext; } .j-number { color: #1f5fbf; }
@@ -161,17 +171,21 @@ body.show-settings #settings { display: block; }
 .preview img { max-width: 100%; max-height: 180px; border-radius: 6px; display: block; margin-bottom: 6px; }
 .preview .ptitle { font-weight: 600; font-size: 14px; unicode-bidi: plaintext; text-align: start; }
 .preview .pdesc { color: var(--muted); unicode-bidi: plaintext; text-align: start; }
-.diffhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; direction: ltr; font-size: 12px; }
+.diffhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; }
 .diffhead .note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.diffhead .stat { font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: var(--muted); }
+.diffhead .stat { font: 12px ui-monospace, "SF Mono", Menlo, monospace; color: var(--muted); direction: ltr; unicode-bidi: isolate; }
 .diff { font-size: 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .diff .line { white-space: pre-wrap; min-height: 1.6em; padding: 0 10px 0 22px; position: relative; }
 .diff .line::before { position: absolute; left: 7px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+/* The +/− gutter sits on the UI's start side for every line, whatever direction the line's own text has. */
+html[dir="rtl"] .diff .line { padding: 0 22px 0 10px; }
+html[dir="rtl"] .diff .line::before { left: auto; right: 7px; }
 .diff .line.al { background: #2e9e5b1c; } .diff .line.al::before { content: "+"; color: #2e9e5b; }
 .diff .line.dl { background: #d333331a; } .diff .line.dl::before { content: "−"; color: #d33; }
 .diff .line.eq { color: var(--muted); }
 .wadd { background: #2e9e5b44; border-radius: 3px; } .wdel { background: #d3333340; border-radius: 3px; text-decoration: line-through; text-decoration-color: #d3333399; }
 #history .item.cmp { box-shadow: inset 3px 0 0 var(--accent); }
+html[dir="rtl"] #history .item.cmp { box-shadow: inset -3px 0 0 var(--accent); }
 body.picking #history .item:hover { background: var(--chip); }
 body.picking #history { box-shadow: inset 0 0 0 2px var(--accent); }
 
@@ -186,3 +200,19 @@ body.picking #history { box-shadow: inset 0 0 0 2px var(--accent); }
 #settings .tabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
 #settings .tab-panel[hidden] { display: none; }
 #settings .tab-panel > h3:first-child { margin-top: 10px; }
+
+/* ---- RTL chrome (html[dir=rtl], set by I18N.setLang) ------------------------------------------------- */
+/* Fields whose values are code-like stay LTR in either UI language (provider URLs, model ids, API keys...).
+   Modules: use type=url / type=password, or add class "ltr" to a text input. */
+#settings :is(input[type=url], input[type=password], input[type=email], input[type=number], input.ltr, textarea.ltr, .ltr input) {
+  direction: ltr; text-align: left; unicode-bidi: isolate; }
+/* Key/value tables in cards: one alignment per column, following the card, not each cell's own text. */
+/* (Specific enough to beat bidi-fix's per-cell text-align: start.) */
+html:not([dir="rtl"]) .card .kv :is(th, td) { text-align: left; }
+html[dir="rtl"] .card .kv :is(th, td) { text-align: right; }
+/* Cells get their own dir from bidi-fix, so the label gap is set physically from the UI direction. */
+html[dir="rtl"] .kv th { padding: 2px 0 2px 12px; }
+/* The JSON filter is code (LTR) once typed; its hint follows the UI while the field is empty. */
+.jq:placeholder-shown { direction: inherit; text-align: start; }
+/* Hebrew has no capitals; letter-spaced small labels read badly in it. */
+html[lang="he"] :is(#settings h3, .card-title, #history .sec) { letter-spacing: 0; text-transform: none; font-size: 11.5px; }
