@@ -122,10 +122,10 @@ enum AXTextReader {
     private static let visibleChildContainers: Set<String> = ["AXList", "AXBrowser", "AXGrid"]
     private static let skippedRoles: Set<String> = ["AXImage", "AXScrollBar", "AXValueIndicator", "AXSecureTextField"]
 
-    private static func walk(_ e: AXUIElement, region: CGRect, depth: Int, budget: inout Int, out: inout [LensSpan]) {
+    private static func walk(_ e: AXUIElement, attrs: Attrs? = nil, region: CGRect, depth: Int, budget: inout Int, out: inout [LensSpan]) {
         guard depth < maxDepth, budget > 0, out.count < maxSpans else { return }
-        budget -= 1
-        let a = Attrs(e)
+        let a: Attrs
+        if let attrs { a = attrs } else { budget -= 1; a = Attrs(e) }
         if let f = a.frame, f.width > 0, f.height > 0, !f.intersects(region) { return }
         if skippedRoles.contains(a.role) || a.subrole == "AXSecureTextField" { return }
 
@@ -153,9 +153,74 @@ enum AXTextReader {
         } else if visibleChildContainers.contains(a.role), let visible = copy(e, kAXVisibleChildrenAttribute) as? [AXUIElement] {
             children = visible
         }
+        // Fetch the children once: they decide whether this element is a paragraph, and the walk reuses them.
+        var fetched: [(AXUIElement, Attrs)] = []
         for c in children {
+            guard budget > 0 else { break }
+            budget -= 1
+            fetched.append((c, Attrs(c)))
+        }
+        if let p = paragraph(fetched, budget: &budget) {
+            out.append(p)
+            return
+        }
+        for (c, ca) in fetched {
             guard budget > 0, out.count < maxSpans else { break }
-            walk(c, region: region, depth: depth + 1, budget: &budget, out: &out)
+            walk(c, attrs: ca, region: region, depth: depth + 1, budget: &budget, out: &out)
+        }
+    }
+
+    // MARK: paragraphs
+
+    /// Web pages and Electron apps split one paragraph into text runs at every link, inline code or bold word, and
+    /// a run that wraps reports one rectangle as wide as the paragraph. Translating the runs one by one breaks the
+    /// sentences and the boxes cover each other. An element whose children are all inline (text runs, links, inline
+    /// code, list markers), with at least one text run directly inside it, is read as one paragraph instead: its
+    /// text in document order (the reading order, right to left included) and the union of the runs' frames.
+    private static func paragraph(_ children: [(AXUIElement, Attrs)], budget: inout Int) -> LensSpan? {
+        guard children.count >= 2, children.count <= 200,
+              children.contains(where: { $0.1.role == "AXStaticText" }) else { return nil }
+        var text = ""
+        var rects: [CGRect] = []
+        var lineHeight = CGFloat.greatestFiniteMagnitude
+        for (c, a) in children {
+            guard let (t, r, h) = inline(c, a, depth: 0, budget: &budget) else { return nil }
+            text += t
+            rects += r
+            lineHeight = min(lineHeight, h)
+        }
+        let clean = tidy(text)
+        guard clean.contains(where: { $0.isLetter }), let first = rects.first else { return nil }
+        let rect = rects.dropFirst().reduce(first) { $0.union($1) }
+        let singleLine = lineHeight < .greatestFiniteMagnitude && rect.height < lineHeight * 1.6
+        return LensSpan(text: clean, rect: rect, singleLine: singleLine)
+    }
+
+    /// Text, frames and the smallest line height of an inline element, or nil when it is not inline.
+    private static func inline(_ e: AXUIElement, _ a: Attrs, depth: Int, budget: inout Int) -> (String, [CGRect], CGFloat)? {
+        let frames = a.frame.map { [$0] } ?? []
+        let height = a.frame?.height ?? .greatestFiniteMagnitude
+        switch a.role {
+        case "AXStaticText":
+            return (a.value ?? a.title ?? "", frames, height)
+        case "AXListMarker":
+            return ((a.value ?? a.title ?? "") + " ", frames, height)
+        case "AXLink", "AXGroup":
+            // Inline code, a link or a styled span: a few children, all inline. A block-level group (a whole
+            // paragraph of its own) is caught by the caller's rule that text runs must sit directly inside.
+            guard depth < 3, !a.children.isEmpty, a.children.count <= 30, budget > 0 else { return nil }
+            var text = "", rects = frames, h = height
+            for c in a.children {
+                guard budget > 0 else { return nil }
+                budget -= 1
+                guard let (t, r, ch) = inline(c, Attrs(c), depth: depth + 1, budget: &budget) else { return nil }
+                text += t; rects += r; h = min(h, ch)
+            }
+            // A group taller than about two lines is a block, not a span inside a line.
+            if let f = a.frame, h < .greatestFiniteMagnitude, f.height > h * 2.2 { return nil }
+            return (text, rects, h)
+        default:
+            return nil
         }
     }
 

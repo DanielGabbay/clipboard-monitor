@@ -165,7 +165,11 @@ enum LineTranslator {
         var results = [LineResult](repeating: .failed(""), count: lines.count)
         var pending: [(index: Int, text: String, from: String, to: String)] = []
         for (i, line) in lines.enumerated() {
-            let (from, to) = TranslationRouter.languages(line, target: target.isEmpty ? nil : target)
+            let (detected, to) = TranslationRouter.languages(line, target: target.isEmpty ? nil : target)
+            var from = detected
+            // A Hebrew or Arabic line full of English names and file paths can be detected as English; the
+            // script decides then.
+            if primary(from) == primary(to), let script = rtlScript(line), primary(to) != script { from = script }
             if primary(from) == primary(to) { results[i] = .same } else { pending.append((i, line, from, to)) }
         }
         guard !pending.isEmpty else { return results }
@@ -203,6 +207,19 @@ enum LineTranslator {
         }
         if !appleItems.isEmpty { for (i, r) in await apple(appleItems) { results[i] = r } }
         return results
+    }
+
+    /// "he" or "ar" when at least 30% of the letters are Hebrew or Arabic, else nil.
+    private static func rtlScript(_ s: String) -> String? {
+        var hebrew = 0, arabic = 0, other = 0
+        for u in s.unicodeScalars where CharacterSet.letters.contains(u) {
+            if (0x0590...0x05FF).contains(u.value) || (0xFB1D...0xFB4F).contains(u.value) { hebrew += 1 }
+            else if (0x0600...0x08FF).contains(u.value) || (0xFB50...0xFEFF).contains(u.value) { arabic += 1 }
+            else { other += 1 }
+        }
+        let total = hebrew + arabic + other
+        guard total > 0, Double(hebrew + arabic) / Double(total) >= 0.3 else { return nil }
+        return hebrew >= arabic ? "he" : "ar"
     }
 
     /// "he-IL" -> "he", "zh-Hans" -> "zh".
