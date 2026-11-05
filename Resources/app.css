@@ -1,0 +1,296 @@
+/* Clipboard Monitor: app chrome and renderer styles. Module styles live in settings-*.css. */
+:root {
+  --bg: #fbfbfa; --fg: #1d1d1f; --muted: #6e6e73; --line: #e3e3e0; --panel: #f1f1ef;
+  --code-bg: #f3f3f1; --accent: #2f6fde; --chip: #e8eefb; --warn: #b35c00;
+  --on-accent: #fff; --danger: #d33;
+  /* One monospace stack for code-like text; "Arial Hebrew" keeps Hebrew inside it from falling back badly. */
+  --mono: ui-monospace, "SF Mono", Menlo, "Arial Hebrew", monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1c1c1e; --fg: #ececec; --muted: #9a9aa0; --line: #343437; --panel: #242427;
+    --code-bg: #2a2a2d; --accent: #6ea0ff; --chip: #26324a; --warn: #ffb35c;
+    --on-accent: #0b1a33; --danger: #ff6b6b; }
+}
+* { box-sizing: border-box; }
+/* Author display rules (inline-flex buttons...) must not defeat the hidden attribute. */
+[hidden] { display: none !important; }
+/* Keyboard focus, everywhere. Containers that clip (tab bar, segmented control, sticky search) inset it. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Code-like values (URLs, ids, app names, keys) stay left-to-right in either UI language. */
+.ltr { direction: ltr; text-align: left; unicode-bidi: isolate; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+  font: 15px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Arial Hebrew", sans-serif; }
+body { display: flex; flex-direction: column; overflow: hidden; }
+
+/* Title-bar area: the window uses a transparent full-size title bar, so leave room for the traffic lights.
+   --pad-l / --pad-r are physical sides set by the app (macOS puts the buttons on the right in RTL languages),
+   so the padding stays physical while the header content follows the UI direction. */
+header { flex: none; display: flex; align-items: center; gap: 2px; height: 38px; padding: 0 var(--pad-r, 10px) 0 var(--pad-l, 78px);
+  border-bottom: 1px solid var(--line); -webkit-user-select: none; user-select: none; }
+header .meta { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; margin-inline-end: 4px; font-size: 12px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+header .meta .chip { flex: none; }
+#src { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Raw / Copy / Copy RTL / Hold: text buttons that turn into icon buttons in a narrow window, so #src keeps room.
+   The text label stays in the accessibility tree (visually hidden); aria-label and title carry the name too. */
+header .hbtn { position: relative; white-space: nowrap; }
+header .hbtn .ic { display: none; }
+@media (max-width: 520px) {
+  header { gap: 1px; }
+  header .hbtn { padding: 3px 6px; line-height: 0; }
+  header .hbtn .ic { display: block; }
+  header .hbtn .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+.chip { font-size: 11px; padding: 1px 7px; border-radius: 9px; background: var(--chip); color: var(--accent); font-weight: 600; }
+.chip.paused { background: transparent; color: var(--warn); border: 1px solid currentColor; }
+button { font: inherit; font-size: 12px; color: var(--fg); background: transparent; border: 1px solid transparent;
+  border-radius: 6px; padding: 3px 7px; cursor: default; }
+button:hover { background: var(--panel); border-color: var(--line); }
+button.on { color: var(--accent); border-color: var(--accent); }
+
+main { flex: 1; display: flex; min-height: 0; }
+#content { flex: 1; overflow: auto; padding: 14px 18px 40px; overflow-wrap: anywhere; }
+/* The clipboard text itself does not follow the UI direction: its containers are LTR and every block inside
+   gets its own dir from bidi-fix.js (a dir attribute on a child wins over the inherited direction). The chrome
+   around it inside #content (action bar, cards, diff header, notes) follows the UI. */
+#content :is(.md, .plain, .raw) { direction: ltr; }
+#content .diff .line:not([dir]) { direction: ltr; }
+#history { flex: none; width: min(210px, 40%); border-inline-start: 1px solid var(--line); overflow: auto; background: var(--panel);
+  display: none; }
+body.show-history #history { display: block; }
+#history .item { padding: 7px 10px; border-bottom: 1px solid var(--line); font-size: 12px; line-height: 1.4; cursor: default; }
+#history .item:hover { background: var(--bg); }
+#history .item.sel { background: var(--chip); }
+#history .item:focus-visible { outline-offset: -2px; }
+#history .item .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  unicode-bidi: plaintext; text-align: start; }
+#history .item .s { color: var(--muted); font-size: 10.5px; margin-top: 2px; }
+
+.empty { color: var(--muted); text-align: center; margin-top: 30vh; font-size: 13px; }
+
+/* Plain text: one block per line, direction decided per line by the shared engine. */
+.plain .line { white-space: pre-wrap; min-height: 1.6em; }
+
+/* Markdown */
+.md > :first-child { margin-top: 0; }
+.md h1, .md h2, .md h3, .md h4 { line-height: 1.3; margin: 1.1em 0 .45em; }
+.md h1 { font-size: 1.55em; } .md h2 { font-size: 1.3em; } .md h3 { font-size: 1.12em; }
+.md h1, .md h2 { padding-bottom: .2em; border-bottom: 1px solid var(--line); }
+.md p { margin: .55em 0; }
+.md ul, .md ol { margin: .4em 0; padding-inline-start: 1.6em; padding-inline-end: 0; }
+.md :is(ul, ol)[dir="rtl"] { padding-right: 1.6em; padding-left: 0; }
+.md :is(ul, ol)[dir="ltr"] { padding-left: 1.6em; padding-right: 0; }
+.md li { margin: .15em 0; }
+.md blockquote { margin: .6em 0; padding: .1em 1em; color: var(--muted); border-inline-start: 3px solid var(--line); }
+.md a { color: var(--accent); text-decoration: none; }
+.md a:hover { text-decoration: underline; }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 1.2em 0; }
+.md img { max-width: 100%; }
+.md table { border-collapse: collapse; margin: .7em 0; display: block; overflow-x: auto; max-width: 100%; }
+.md th, .md td { border: 1px solid var(--line); padding: 4px 9px; }
+.md th { background: var(--panel); }
+.md input[type=checkbox] { margin: 0 .35em; vertical-align: middle; }
+code, pre, kbd { font-family: var(--mono); font-size: .88em; }
+:not(pre) > code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+pre { background: var(--code-bg); padding: 10px 12px; border-radius: 7px; overflow-x: auto; line-height: 1.45;
+  direction: ltr; text-align: left; white-space: pre; }
+
+.raw { white-space: pre-wrap; unicode-bidi: plaintext; text-align: start; font-family: var(--mono); font-size: .88em; }
+.imgwrap img { max-width: 100%; border-radius: 6px; border: 1px solid var(--line); background:
+  repeating-conic-gradient(#8881 0 25%, transparent 0 50%) 50% / 16px 16px; }
+.note { color: var(--muted); font-size: 13px; }
+#search { position: sticky; top: 0; z-index: 1; display: block; width: 100%; padding: 6px 9px; border: 0;
+  border-bottom: 1px solid var(--line); background: var(--panel); color: var(--fg); font: inherit; font-size: 12px;
+  unicode-bidi: plaintext; text-align: start; }
+#search:focus-visible { outline-offset: -2px; }
+#history .none { padding: 10px; color: var(--muted); font-size: 12px; }
+.toast { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg);
+  font-size: 12px; padding: 5px 12px; border-radius: 12px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.toast.show { opacity: .92; }
+header { margin-top: var(--pad-t, 0px); }
+body { font-family: var(--font, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Arial Hebrew", sans-serif); }
+.chip.held { background: transparent; color: var(--accent); border: 1px solid currentColor; }
+button.icon { padding: 3px 6px; line-height: 0; }
+button:disabled { opacity: .35; }
+
+/* Settings panel: an overlay over the content area of this window. */
+#settings { position: absolute; inset: 0; top: calc(38px + var(--pad-t, 0px)); background: var(--bg); overflow: auto;
+  padding: 14px 18px 30px; display: none; z-index: 5; }
+body.show-settings #settings { display: block; }
+#settings h2 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; }
+#settings h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; }
+#settings .row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+#settings .row > span { flex: 1; min-width: 0; }
+#settings .row small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.35; }
+#settings select, #settings input[type=text], #settings textarea { font: inherit; font-size: 12.5px; color: var(--fg);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+#settings textarea { width: 100%; min-height: 44px; resize: vertical; margin-top: 4px; }
+#settings .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+#settings .seg button { border: 0; border-radius: 0; padding: 3px 10px; }
+#settings .seg button.on { background: var(--accent); color: var(--on-accent); }
+#settings .seg button:focus-visible { outline-offset: -2px; }
+#settings input[type=range] { width: 120px; }
+#settings .switch { appearance: none; -webkit-appearance: none; width: 34px; height: 20px; border-radius: 10px;
+  background: color-mix(in srgb, var(--fg) 22%, transparent); position: relative; flex: none; transition: background .15s; margin: 0; }
+#settings .switch::after { content: ""; position: absolute; top: 2px; inset-inline-start: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px #0004; transition: transform .15s; }
+#settings .switch:checked { background: var(--accent); }
+/* The knob slides toward the inline end: right in LTR, left in RTL (transform, not a logical inset, so the
+   animation never goes stale when the page direction flips). */
+#settings .switch:checked::after { transform: translateX(14px); }
+html[dir="rtl"] #settings .switch:checked::after { transform: translateX(-14px); }
+/* An LTR field (URL, key, id) shows its hint in the UI direction while empty. */
+html[dir="rtl"] input[dir="ltr"]:placeholder-shown { direction: rtl; text-align: right; }
+
+/* ---- Buttons: one system for Settings, cards and the action bar ------------------------------------------
+   .btn            bordered, panel background
+   .btn.primary    accent background, var(--on-accent) text
+   .btn.danger     danger text (add .primary for a filled danger button, e.g. the confirm step)
+   .btn.sm         smaller
+   .ghost          opt out of the default bordered look (text-like buttons inside #settings)
+   Plain <button>s inside #settings (not tabs, not segmented, not .ghost) and inside .actions / .row-btns get
+   the .btn look by default, at low specificity so module rules (#settings .x) still win. */
+.btn, #settings :where(button:not(.tabs *, .seg *, .ghost)), :where(.actions, .row-btns) button {
+  border-color: var(--line); background: var(--panel); white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.btn:hover, #settings :where(button:not(.tabs *, .seg *, .ghost)):hover, :where(.actions, .row-btns) button:hover {
+  background: color-mix(in srgb, var(--fg) 6%, var(--panel)); border-color: color-mix(in srgb, var(--fg) 20%, var(--line)); }
+.btn.on, #settings .btn.on, :where(.actions, .row-btns) button.on { color: var(--accent); border-color: var(--accent); }
+.btn.primary, #settings .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn.primary:hover, #settings .btn.primary:hover { background: color-mix(in srgb, var(--accent) 86%, var(--fg)); border-color: transparent; }
+.btn.danger, #settings .btn.danger, #settings button.danger { color: var(--danger); }
+.btn.danger:hover, #settings .btn.danger:hover, #settings button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 10%, var(--panel)); border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
+.btn.danger.primary, #settings .btn.danger.primary { background: var(--danger); border-color: var(--danger); color: var(--on-accent); }
+.btn.danger.primary:hover, #settings .btn.danger.primary:hover { background: color-mix(in srgb, var(--danger) 86%, var(--fg)); }
+.btn.sm, #settings .btn.sm { font-size: 11.5px; padding: 1px 6px; border-radius: 5px; }
+.ghost { border-color: transparent; background: transparent; }
+.ghost:hover { border-color: transparent; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+
+/* Inline two-step confirm: <div class="confirm"><span>Message</span><button class="btn danger primary">…</button>
+   <button class="btn">Cancel</button></div>. No window.confirm. */
+.confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; padding: 7px 9px; font-size: 13px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line)); border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 7%, var(--bg)); }
+.confirm > span:first-child, .confirm > .msg { flex: 1 1 160px; min-width: 0; }
+
+/* History: pinned section, hover actions */
+#history .sec { padding: 8px 10px 3px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+#history .item { position: relative; }
+#history .item .acts { position: absolute; top: 4px; inset-inline-end: 4px; display: none; gap: 2px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 1px; }
+#history .item:is(:hover, :focus-within) .acts { display: flex; }
+#history .item .acts button { padding: 2px 4px; line-height: 0; border-radius: 4px; }
+#history .item.pinned .pin-mark { color: var(--accent); margin-inline-end: 4px; }
+
+/* Right-click menu */
+#ctx { position: fixed; z-index: 20; min-width: 190px; padding: 4px; border-radius: 8px; background: var(--panel);
+  border: 1px solid var(--line); box-shadow: 0 8px 28px #0003; display: none; font-size: 13px; }
+#ctx.show { display: block; }
+#ctx .mi { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 5px; cursor: default; white-space: nowrap; }
+#ctx .mi:is(:hover, :focus) { background: var(--accent); color: var(--on-accent); outline: none; }
+#ctx .mi kbd { margin-inline-start: auto; padding-inline-start: 12px; opacity: .6; font-family: inherit; font-size: 11.5px; }
+#ctx .mi.danger { color: var(--danger); }
+#ctx .mi.danger:is(:hover, :focus) { background: var(--danger); color: var(--on-accent); }
+#ctx hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px; }
+
+/* Action bar, smart cards, diff */
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: -4px 0 10px; }
+.card { margin: 12px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel);
+  text-align: start; font-size: 13px; }
+.card.warn { border-color: var(--warn); }
+.card-title { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+.card .sub { font-size: 11px; color: var(--muted); margin: 10px 0 3px; font-weight: 600; }
+.card .big { font-size: 16px; font-weight: 600; unicode-bidi: plaintext; text-align: start; }
+.card .note { margin: 4px 0; }
+.kv { border-collapse: collapse; width: 100%; }
+.kv th { text-align: start; color: var(--muted); font-weight: 500; padding: 2px 12px 2px 0; white-space: nowrap; vertical-align: top; width: 1%; }
+.kv td { padding: 2px 0; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; unicode-bidi: plaintext; }
+.kv td.date { font-family: inherit; }
+.kv td.copy:hover { color: var(--accent); cursor: pointer; }
+.badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 9px; margin-bottom: 6px; }
+.badge.good { background: #2e9e5b22; color: #2e9e5b; } .badge.bad { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.swatch { height: 56px; border-radius: 7px; border: 1px solid var(--line); margin-bottom: 8px;
+  box-shadow: inset 0 0 0 100px transparent; }
+.row-btns { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.jq { direction: ltr; text-align: left; flex: 1; min-width: 140px; font: 12px var(--mono); color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 7px; }
+.jq:focus { border-color: var(--accent); }
+.jtree { direction: ltr; text-align: left; margin-top: 8px; font: 12.5px/1.55 var(--mono); overflow-x: auto; }
+.jnode > summary { cursor: default; color: var(--muted); list-style: revert; }
+.jnode .jrow { padding-left: 18px; white-space: pre-wrap; word-break: break-word; }
+.jkey { color: #a0479b; } .j-string { color: #2a7a3b; unicode-bidi: plaintext; } .j-number { color: #1f5fbf; }
+.j-boolean, .j-null { color: #b35c00; }
+@media (prefers-color-scheme: dark) { .jkey { color: #e08ad6; } .j-string { color: #8fd18f; } .j-number { color: #7fb0ff; } .j-boolean, .j-null { color: #ffb35c; } }
+.decoded { white-space: pre-wrap; unicode-bidi: plaintext; text-align: start; font-family: var(--mono); font-size: 12px; }
+.preview { margin-top: 8px; }
+.preview img { max-width: 100%; max-height: 180px; border-radius: 6px; display: block; margin-bottom: 6px; }
+.preview .ptitle { font-weight: 600; font-size: 14px; unicode-bidi: plaintext; text-align: start; }
+.preview .pdesc { color: var(--muted); unicode-bidi: plaintext; text-align: start; }
+.diffhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12px; }
+.diffhead .note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diffhead .stat { font: 12px var(--mono); color: var(--muted); direction: ltr; unicode-bidi: isolate; }
+.diff { font-size: 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.diff .line { white-space: pre-wrap; min-height: 1.6em; padding: 0 10px 0 22px; position: relative; }
+.diff .line::before { position: absolute; left: 7px; color: var(--muted); font-family: var(--mono); }
+/* The +/− gutter sits on the UI's start side for every line, whatever direction the line's own text has. */
+html[dir="rtl"] .diff .line { padding: 0 22px 0 10px; }
+html[dir="rtl"] .diff .line::before { left: auto; right: 7px; }
+.diff .line.al { background: #2e9e5b1c; } .diff .line.al::before { content: "+"; color: #2e9e5b; }
+.diff .line.dl { background: color-mix(in srgb, var(--danger) 10%, transparent); } .diff .line.dl::before { content: "−"; color: var(--danger); }
+.diff .line.eq { color: var(--muted); }
+.wadd { background: #2e9e5b44; border-radius: 3px; } .wdel { background: color-mix(in srgb, var(--danger) 25%, transparent); border-radius: 3px; text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger) 60%, transparent); }
+#history .item.cmp { box-shadow: inset 3px 0 0 var(--accent); }
+html[dir="rtl"] #history .item.cmp { box-shadow: inset -3px 0 0 var(--accent); }
+body.picking #history .item:hover { background: var(--chip); }
+body.picking #history { box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* Settings: header row and tab bar */
+#settings .s-head { display: flex; align-items: center; margin: 0 0 8px; }
+#settings .s-head h2 { margin: 0; }
+#settings .s-head .x { margin-inline-start: auto; }
+#settings .tabs { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--line); margin: 0 -18px 6px; padding: 0 14px;
+  position: sticky; top: -14px; background: var(--bg); z-index: 1; scrollbar-width: none; }
+#settings .tabs button { flex: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 6px 9px; color: var(--muted); }
+#settings .tabs button:hover { background: transparent; color: var(--fg); }
+#settings .tabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
+#settings .tabs button:focus-visible { outline-offset: -2px; }
+#settings .tab-panel[hidden] { display: none; }
+#settings .tab-panel > h3:first-child { margin-top: 10px; }
+
+/* ---- RTL chrome (html[dir=rtl], set by I18N.setLang) ------------------------------------------------- */
+/* Fields whose values are code-like stay LTR in either UI language (provider URLs, model ids, API keys...).
+   Modules: use type=url / type=password, or add class "ltr" to a text input. */
+#settings :is(input[type=url], input[type=password], input[type=email], input[type=number], input.ltr, textarea.ltr, .ltr input) {
+  direction: ltr; text-align: left; unicode-bidi: isolate; }
+/* Key/value tables in cards: one alignment per column, following the card, not each cell's own text. */
+/* (Specific enough to beat bidi-fix's per-cell text-align: start.) */
+html:not([dir="rtl"]) .card .kv :is(th, td) { text-align: left; }
+html[dir="rtl"] .card .kv :is(th, td) { text-align: right; }
+/* Cells get their own dir from bidi-fix, so the label gap is set physically from the UI direction. */
+html[dir="rtl"] .kv th { padding: 2px 0 2px 12px; }
+/* The JSON filter is code (LTR) once typed; its hint follows the UI while the field is empty. */
+.jq:placeholder-shown { direction: inherit; text-align: start; }
+/* Hebrew has no capitals; letter-spaced small labels read badly in it. */
+html[lang="he"] :is(#settings h3, .card-title, #history .sec) { letter-spacing: 0; text-transform: none; font-size: 11.5px; }
+
+/* Shortcut hints inside buttons keep their glyph order in RTL (dir=ltr on the kbd). */
+#settings button kbd { font: inherit; color: var(--muted); }
+
+/* Keyboard access for history rows and menus (renderer.js keyboard support) */
+#history .item:focus-within .acts { display: flex; }
+#ctx .mi:focus-visible, .tr-menu .mi:focus-visible { background: var(--accent); color: var(--on-accent); outline: none; }
+#ctx .mi.danger:focus-visible { background: var(--danger); color: var(--on-accent); }
+
+/* "Translate ▸" submenu of the context menu */
+#ctx .ctx-sub { position: fixed; z-index: 21; min-width: 170px; max-height: calc(100vh - 8px); overflow-y: auto;
+  padding: 4px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 8px 28px #0003; }
+#ctx .mi .sub-arrow { margin-inline-start: auto; padding-inline-start: 12px; opacity: .6; }
+#ctx .mi[aria-expanded="true"] { background: var(--chip); }
+
+/* Raw token under a JWT / Base64 card */
+#content details.raw-text { margin-top: 10px; }
+#content details.raw-text > summary { color: var(--muted); font-size: 12px; cursor: default; }
+#content details.raw-text .plain { margin-top: 6px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; font-family: var(--mono); }

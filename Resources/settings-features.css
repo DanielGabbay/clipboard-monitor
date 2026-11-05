@@ -1,0 +1,4 @@
+/* Settings › Features tab: feature switches. Translation settings and the translate menu: settings-translate.css. */
+#settings .features-tab .f-sub { margin-inline-start: 22px; }
+#settings .features-tab .f-sub .row { padding: 5px 0; font-size: 12.5px; }
+#settings .features-tab .f-sub .row.off { opacity: .45; }

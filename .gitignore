@@ -1,3 +1,5 @@
 build/
 .DS_Store
 icon/*.png
+dev/preview.html
+.claude/worktrees/
