@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Translation Lens</title>
+<link rel="stylesheet" href="lens.css">
+</head>
+<body>
+<!-- Translation Lens (LensController.swift). The toolbar drags the panel; the region below it is see-through and
+     shows one translated box on top of each original line. Clicks in the region pass through to the app below. -->
+<header id="bar">
+  <span class="name" data-i18n="lens.name">Lens</span>
+  <select id="target" dir="auto" data-i18n-title="lens.target.title"></select>
+  <button id="auto" class="tb" data-i18n-title="lens.auto.title" aria-pressed="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></svg><span class="lbl" data-i18n="lens.auto">Auto</span></button>
+  <button id="refresh" class="tb icon" data-i18n-title="lens.refresh.title"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 0 1 9.4-3.9L13.5 5.5M13.5 2.5v3h-3M13.5 8a5.5 5.5 0 0 1-9.4 3.9L2.5 10.5M2.5 13.5v-3h3"/></svg></button>
+  <button id="peek" class="tb icon" data-i18n-title="lens.peek.title"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg></button>
+  <span id="status" class="status" aria-live="polite"></span>
+  <button id="ax" class="tb link" hidden data-i18n="lens.permission.open">Open Settings</button>
+  <button id="close" class="tb icon" data-i18n-title="lens.close.title"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+</header>
+<main id="layer"></main>
+<script src="i18n.js"></script>
+<script src="lens.js"></script>
+</body>
+</html>

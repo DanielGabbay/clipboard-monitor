@@ -18,6 +18,11 @@ mixed **Hebrew / English (RTL + LTR)** text. Park it on the side of a monitor an
 - **Translate.** Automatic Hebrew ↔ English, or "Translate to…" any language in your list. Use an LLM provider and
   model of your choice (Markdown structure, code and URLs are kept), or Apple's on-device Translation framework
   (macOS 26+), which also serves as the fallback when the LLM call fails.
+- **Translation Lens.** A floating see-through panel (View › Translation Lens, ⌃⌥T from any app) that translates
+  whatever text sits under it and draws each translated line on top of the original. The text comes from the app's
+  accessibility tree, so it is exact, Hebrew included, and no screenshot is taken; it needs the Accessibility
+  permission once. Clicks and scrolling pass through it, and it updates when the content below changes. Works with
+  native apps, Safari, Chrome and Electron apps; images, video and scanned PDFs are not supported yet.
 - **AI providers.** OpenAI, Anthropic, Google Gemini, OpenRouter, Ollama, LM Studio or any OpenAI-compatible
   endpoint. Check a provider or a single model, hide models you do not use, and let the model list refresh on its
   own (new models arrive hidden and marked "new"). API keys live in the macOS Keychain only: never in the settings,
@@ -68,7 +73,8 @@ The script needs a clean working tree. It turns `## [Unreleased]` (or `## [1.2.0
 ### Signing
 
 API keys are stored in the Keychain, and the Keychain remembers which app may read them by its code signature. An
-ad-hoc signature changes with every build, so each rebuild would ask for access again. Create a stable local
+ad-hoc signature changes with every build, so each rebuild would ask for access again. The Accessibility permission that the
+Translation Lens needs is tied to the signature the same way. Create a stable local
 signing identity once:
 
 ```sh
@@ -106,6 +112,7 @@ In the console: `monitor.toggleSettings(true)`, `MOCK.lang('he')` / `MOCK.lang('
 | ⇧⌘C | Copy with RTL marks |
 | ⇧⌘T | Always on top |
 | ⇧⌘P | Pause monitoring |
+| ⌥⌘T | Translation Lens |
 | ⌘, | Settings |
 | ⌘+ / ⌘- / ⌘0 | Text size |
 
@@ -115,6 +122,10 @@ In the console: `monitor.toggleSettings(true)`, `MOCK.lang('he')` / `MOCK.lang('
   the global hot key (Carbon, no Accessibility permission needed) and the login item (`SMAppService`).
   Next to it: `Settings.swift`, `Localization.swift` (menu strings), `Translation.swift` (Apple / LLM router),
   `AI/` (providers, models, Keychain) and `Version.swift`.
+- `Sources/Lens/`: the Translation Lens. `AXTextReader.swift` finds the window under the panel (`CGWindowList`) and
+  reads its visible text lines with their bounds from the accessibility tree; `LensController.swift` runs the
+  panel, mouse pass-through, change notifications (`AXObserver`) and the line cache, and translates through
+  `LineTranslator` in `Translation.swift`. `Resources/lens.html` draws the translated boxes.
 - `Resources/index.html` + `app.css`: the page, running in a `WKWebView`. `renderer.js` renders the clipboard,
   `settings.js` runs the settings tabs, and `settings-features.js`, `settings-ai.js` and `settings-about.js` fill
   their tabs. `i18n.js` is the string engine; each module registers its own English and Hebrew strings.

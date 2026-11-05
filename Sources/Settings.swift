@@ -20,13 +20,17 @@ enum Settings {
         // features (flat "f.*" keys so the generic set path covers them)
         "f.translate": true, "f.ai": true, "f.smartCards": true,
         "f.smartJwt": true, "f.smartJson": true, "f.smartColor": true, "f.smartTime": true, "f.smartBase64": true, "f.smartLink": true,
-        "f.compare": true, "f.linkPreview": true, "f.copyRtl": true,
+        "f.compare": true, "f.linkPreview": true, "f.copyRtl": true, "f.lens": true,
         // translation
         "translateEngine": "apple",         // "apple" | "llm"
         "translateProvider": "",            // AI provider id
         "translateModel": "",               // model id within that provider
         "translateFallbackApple": true,
         "translateTargets": "he,en,ar,ru,fr,es,de",
+        // Translation Lens
+        "lensTarget": "",                   // empty: Hebrew <-> English per line
+        "lensAutoRefresh": true,
+        "lensHotkey": "ctrl-opt-t",
         // AI
         "modelRefreshHours": 24,
     ]
@@ -44,4 +48,11 @@ let hotKeyPresets: [String: (key: Int, mods: Int)] = [
     "ctrl-opt-cmd-v": (kVK_ANSI_V, controlKey | optionKey | cmdKey),
     "ctrl-shift-v": (kVK_ANSI_V, controlKey | shiftKey),
     "ctrl-opt-space": (kVK_Space, controlKey | optionKey),
+]
+
+/// Global shortcuts that open / close the Translation Lens.
+let lensHotKeyPresets: [String: (key: Int, mods: Int)] = [
+    "ctrl-opt-t": (kVK_ANSI_T, controlKey | optionKey),
+    "ctrl-opt-cmd-t": (kVK_ANSI_T, controlKey | optionKey | cmdKey),
+    "ctrl-shift-t": (kVK_ANSI_T, controlKey | shiftKey),
 ]

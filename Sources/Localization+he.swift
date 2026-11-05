@@ -32,6 +32,7 @@ extension Loc {
         "menu.view.zoomOut": "הקטן",
         "menu.view.actualSize": "גודל אמיתי",
         "menu.view.snapRight": "הזז לקצה הימני של המסך",
+        "menu.view.lens": "עדשת תרגום",
         "menu.window": "חלון",
         "menu.window.showHide": "הצג / הסתר את החלונות",
         "menu.window.minimize": "מזער",

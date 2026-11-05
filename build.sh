@@ -18,7 +18,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # Every Swift file under Sources/ (main.swift holds the top-level entry point).
 SOURCES=(); while IFS= read -r f; do SOURCES+=("$f"); done < <(find Sources -name '*.swift' | sort)
 swiftc -O -o "$APP/Contents/MacOS/ClipboardMonitor" "${SOURCES[@]}" \
-  -framework Cocoa -framework WebKit -framework Security 2>&1 | grep -v "^$" || true
+  -framework Cocoa -framework WebKit -framework Security -framework ApplicationServices 2>&1 | grep -v "^$" || true
 [ -x "$APP/Contents/MacOS/ClipboardMonitor" ] || { echo "build failed"; exit 1; }
 cp Info.plist "$APP/Contents/"
 cp Resources/* "$APP/Contents/Resources/"
