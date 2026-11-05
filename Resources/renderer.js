@@ -31,8 +31,9 @@
   // BiDi: majority detection per block (see toolkit README "Choosing the detection mode").
   // Rich HTML from web pages often holds text directly in <div>s, so leaf divs count as blocks there.
   const BIDI = {
-    blocks: 'p, h1, h2, h3, h4, h5, h6, blockquote, td, th, dd, dt, figcaption, .line, .decoded, ' +
-            '.rich div:not(:has(div, p, ul, ol, table, pre, h1, h2, h3, h4, blockquote))',
+    // Only the clipboard view: Settings and other chrome follow the UI direction instead of per-block detection.
+    blocks: ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'td', 'th', 'dd', 'dt', 'figcaption', '.line', '.decoded',
+             '.rich div:not(:has(div, p, ul, ol, table, pre, h1, h2, h3, h4, blockquote))'].map((s) => '#content ' + s).join(', '),
     editors: '#search, #settings textarea, #settings input[type=text]', detect: 'majority', ratio: 0.3, align: true,
     forceLtr: 'pre, kbd, samp', isolateInline: 'a, code, kbd, strong, em, b, i',
   };
@@ -183,7 +184,7 @@
           }
           const kv = [['alg', h.alg], ['typ', h.typ]];
           for (const k of ['iss', 'sub', 'aud']) if (p[k] != null) kv.push([k, String(p[k])]);
-          for (const k of ['iat', 'nbf', 'exp']) if (p[k]) kv.push([k, fullDate(p[k] * 1000)]);
+          for (const k of ['iat', 'nbf', 'exp']) if (p[k]) kv.push([k, fullDate(p[k] * 1000), 'date']);
           card.appendChild(kvTable(kv));
           card.appendChild(elt('div', 'sub', t('smart.jwt.header'))); card.appendChild(jsonView(h));
           card.appendChild(elt('div', 'sub', t('smart.jwt.payload'))); card.appendChild(jsonView(p));
@@ -250,9 +251,9 @@
 
   function kvTable(rows, copyable) {
     const tb = elt('table', 'kv');
-    for (const [k, v] of rows) {
+    for (const [k, v, cls] of rows) {   // optional cls, e.g. 'date' (body font instead of monospace)
       const tr = elt('tr'); tr.append(elt('th', '', k));
-      const td = elt('td', '', v == null ? '' : String(v));
+      const td = elt('td', cls || '', v == null ? '' : String(v));
       if (copyable) { td.title = t('smart.clickToCopy'); td.classList.add('copy'); td.onclick = () => copyText(String(v)); }
       tr.append(td); tb.append(tr);
     }

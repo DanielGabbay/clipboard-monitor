@@ -278,3 +278,19 @@ html[lang="he"] :is(#settings h3, .card-title, #history .sec) { letter-spacing: 
 
 /* Shortcut hints inside buttons keep their glyph order in RTL (dir=ltr on the kbd). */
 #settings button kbd { font: inherit; color: var(--muted); }
+
+/* Keyboard access for history rows and menus (renderer.js keyboard support) */
+#history .item:focus-within .acts { display: flex; }
+#ctx .mi:focus-visible, .tr-menu .mi:focus-visible { background: var(--accent); color: var(--on-accent); outline: none; }
+#ctx .mi.danger:focus-visible { background: var(--danger); color: var(--on-accent); }
+
+/* "Translate ▸" submenu of the context menu */
+#ctx .ctx-sub { position: fixed; z-index: 21; min-width: 170px; max-height: calc(100vh - 8px); overflow-y: auto;
+  padding: 4px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 8px 28px #0003; }
+#ctx .mi .sub-arrow { margin-inline-start: auto; padding-inline-start: 12px; opacity: .6; }
+#ctx .mi[aria-expanded="true"] { background: var(--chip); }
+
+/* Raw token under a JWT / Base64 card */
+#content details.raw-text { margin-top: 10px; }
+#content details.raw-text > summary { color: var(--muted); font-size: 12px; cursor: default; }
+#content details.raw-text .plain { margin-top: 6px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; font-family: var(--mono); }

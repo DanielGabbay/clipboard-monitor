@@ -53,7 +53,7 @@
       'settings.features.compare': 'השוואה',
       'settings.features.compare.hint': 'הצגת ההבדלים בין שני פריטים בהיסטוריה.',
       'settings.features.linkPreview': 'תצוגה מקדימה לקישור',
-      'settings.features.linkPreview.hint': 'כפתור „טען תצוגה מקדימה” בכרטיס קישור. הדף נטען רק כשלוחצים עליו.',
+      'settings.features.linkPreview.hint': 'כפתור „טען תצוגה מקדימה” בכרטיס קישור. הדף נטען רק אחרי לחיצה עליו.',
       'settings.features.copyRtl': 'העתקה עם סימני RTL',
       'settings.features.copyRtl.hint': 'כפתור Copy RTL ופריטי התפריט (מוסיף סימני כיווניות לשורות בעברית).',
     },
