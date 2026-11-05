@@ -1,6 +1,7 @@
 // Translation Lens page. The app (LensController.swift) reads the text under the lens, translates it and calls
 //   lens.setup({lang, target, targets, auto})
-//   lens.render({spans: [{x, y, w, h, line, text}], status, detail?})   boxes in CSS px, relative to #layer
+//   lens.render({mode: 'overlay', spans: [{x, y, w, h, line, text}], status, detail?})   boxes in CSS px, relative to #layer
+//   lens.render({mode: 'reading', blocks: [{text, state: 'ok' | 'same' | 'pending'}], status, detail?})
 //   lens.status({status, detail?})
 //   lens.clear()
 // The page posts {cmd: 'dragZones' | 'set' | 'refresh' | 'close' | 'openAXSettings'} back.
@@ -13,6 +14,8 @@
       'lens.target.title': 'Translate into',
       'lens.target.auto': 'Hebrew ↔ English',
       'lens.auto': 'Auto',
+      'lens.mode': 'Over the text',
+      'lens.mode.title': 'Show each translation on top of its line instead of as a document',
       'lens.auto.title': 'Translate again when the content below changes',
       'lens.refresh.title': 'Read and translate again',
       'lens.peek.title': 'Hold to see the original',
@@ -34,6 +37,8 @@
       'lens.target.title': 'תרגם ל־',
       'lens.target.auto': 'עברית ↔ אנגלית',
       'lens.auto': 'אוטומטי',
+      'lens.mode': 'על הטקסט',
+      'lens.mode.title': 'הצג כל תרגום מעל השורה שלו במקום כמסמך',
       'lens.auto.title': 'תרגם שוב כשהתוכן שמתחת משתנה',
       'lens.refresh.title': 'קרא ותרגם שוב',
       'lens.peek.title': 'החזק כדי לראות את המקור',
@@ -55,7 +60,7 @@
   const $ = (s) => document.querySelector(s);
   const native = (msg) => { try { window.webkit.messageHandlers.app.postMessage(msg); } catch (e) { console.log('native', msg); } };
   const layer = $('#layer');
-  let S = { target: '', targets: 'he,en', auto: true };
+  let S = { target: '', targets: 'he,en', auto: true, mode: 'reading' };
 
   function langName(code) {
     try { return new Intl.DisplayNames([I18N.locale], { type: 'language' }).of(code) || code; } catch (e) { return code; }
@@ -116,21 +121,59 @@
     boxes.forEach(([el, s]) => fit(el, s.line, s.h));
   }
 
+  /** Reading mode: one paragraph per block, `inline code` kept left to right, scroll position kept. */
+  function drawDoc(blocks) {
+    const top = layer.scrollTop;
+    const frag = document.createDocumentFragment();
+    for (const b of blocks || []) {
+      const p = document.createElement('p');
+      p.className = 'doc ' + (b.state || 'ok');
+      p.dir = 'auto';
+      String(b.text || '').split(/(`[^`\n]+`)/).forEach((part) => {
+        if (/^`[^`]+`$/.test(part)) { const c = document.createElement('code'); c.textContent = part.slice(1, -1); p.appendChild(c); }
+        else if (part) p.appendChild(document.createTextNode(part));
+      });
+      frag.appendChild(p);
+    }
+    layer.textContent = '';
+    layer.appendChild(frag);
+    layer.scrollTop = top;
+  }
+
+  function applyMode() {
+    const reading = S.mode !== 'overlay';
+    document.body.classList.toggle('reading', reading);
+    $('#mode').setAttribute('aria-pressed', String(!reading));
+  }
+
   window.lens = {
     setup(s) {
       S = Object.assign(S, s || {});
       I18N.setLang(S.lang === 'he' ? 'he' : 'en');
       fillTargets();
       $('#auto').setAttribute('aria-pressed', String(!!S.auto));
+      applyMode();
       reportDragZones();
     },
-    render(m) { draw(m.spans); setStatus(m.status, m.detail); },
+    render(m) {
+      S.mode = m.mode === 'overlay' ? 'overlay' : 'reading';
+      applyMode();
+      if (S.mode === 'reading') drawDoc(m.blocks); else draw(m.spans);
+      setStatus(m.status, m.detail);
+    },
     status(m) { setStatus(m.status, m.detail); },
-    clear() { layer.textContent = ''; },
+    // Moving or resizing the panel: overlay boxes are stale at once; a document stays until the next render.
+    clear() { if (S.mode === 'overlay') layer.textContent = ''; },
   };
 
   $('#target').onchange = (e) => { S.target = e.target.value; native({ cmd: 'set', key: 'lensTarget', value: S.target }); };
   $('#auto').onclick = () => { S.auto = !S.auto; $('#auto').setAttribute('aria-pressed', String(S.auto)); native({ cmd: 'set', key: 'lensAutoRefresh', value: S.auto }); };
+  $('#mode').onclick = () => {
+    S.mode = S.mode === 'overlay' ? 'reading' : 'overlay';
+    applyMode();
+    layer.textContent = '';
+    native({ cmd: 'set', key: 'lensMode', value: S.mode });
+  };
   $('#refresh').onclick = () => native({ cmd: 'refresh' });
   $('#close').onclick = () => native({ cmd: 'close' });
   $('#ax').onclick = () => native({ cmd: 'openAXSettings' });

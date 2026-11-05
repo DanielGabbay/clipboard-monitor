@@ -33,6 +33,7 @@ extension Loc {
         "menu.view.actualSize": "גודל אמיתי",
         "menu.view.snapRight": "הזז לקצה הימני של המסך",
         "menu.view.lens": "עדשת תרגום",
+        "menu.view.bubble": "תרגם מתחת לסמן",
         "menu.window": "חלון",
         "menu.window.showHide": "הצג / הסתר את החלונות",
         "menu.window.minimize": "מזער",

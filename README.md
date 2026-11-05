@@ -18,11 +18,14 @@ mixed **Hebrew / English (RTL + LTR)** text. Park it on the side of a monitor an
 - **Translate.** Automatic Hebrew ↔ English, or "Translate to…" any language in your list. Use an LLM provider and
   model of your choice (Markdown structure, code and URLs are kept), or Apple's on-device Translation framework
   (macOS 26+), which also serves as the fallback when the LLM call fails.
-- **Translation Lens.** A floating see-through panel (View › Translation Lens, ⌃⌥T from any app) that translates
-  whatever text sits under it and draws each translated line on top of the original. The text comes from the app's
-  accessibility tree, so it is exact, Hebrew included, and no screenshot is taken; it needs the Accessibility
-  permission once. Clicks and scrolling pass through it, and it updates when the content below changes. Works with
-  native apps, Safari, Chrome and Electron apps; images, video and scanned PDFs are not supported yet.
+- **Translate at Pointer.** Point at a paragraph or select text in any app and press ⌃⌥T: the translation opens in
+  a small card next to it, with the original one click away, Copy, and "Open in Clipboard Monitor". The text comes
+  from the app's accessibility tree, so it is exact, Hebrew included, and nothing passes through the clipboard; it
+  needs the Accessibility permission once. Works with native apps, Safari, Chrome and Electron apps.
+- **Translation Lens.** A floating panel (View › Translation Lens, ⌃⌥⌘T) that shows the text of the window under it
+  as a translated, scrollable document, paragraph by paragraph, and follows it as it changes. An "Over the text"
+  toggle draws each translation on top of its original line instead. Images, video and scanned PDFs are not
+  supported yet.
 - **AI providers.** OpenAI, Anthropic, Google Gemini, OpenRouter, Ollama, LM Studio or any OpenAI-compatible
   endpoint. Check a provider or a single model, hide models you do not use, and let the model list refresh on its
   own (new models arrive hidden and marked "new"). API keys live in the macOS Keychain only: never in the settings,
@@ -112,7 +115,8 @@ In the console: `monitor.toggleSettings(true)`, `MOCK.lang('he')` / `MOCK.lang('
 | ⇧⌘C | Copy with RTL marks |
 | ⇧⌘T | Always on top |
 | ⇧⌘P | Pause monitoring |
-| ⌥⌘T | Translation Lens |
+| ⌃⌥T (any app) | Translate at Pointer |
+| ⌥⌘T, or ⌃⌥⌘T from any app | Translation Lens |
 | ⌘, | Settings |
 | ⌘+ / ⌘- / ⌘0 | Text size |
 
@@ -122,10 +126,11 @@ In the console: `monitor.toggleSettings(true)`, `MOCK.lang('he')` / `MOCK.lang('
   the global hot key (Carbon, no Accessibility permission needed) and the login item (`SMAppService`).
   Next to it: `Settings.swift`, `Localization.swift` (menu strings), `Translation.swift` (Apple / LLM router),
   `AI/` (providers, models, Keychain) and `Version.swift`.
-- `Sources/Lens/`: the Translation Lens. `AXTextReader.swift` finds the window under the panel (`CGWindowList`) and
-  reads its visible text lines with their bounds from the accessibility tree; `LensController.swift` runs the
-  panel, mouse pass-through, change notifications (`AXObserver`) and the line cache, and translates through
-  `LineTranslator` in `Translation.swift`. `Resources/lens.html` draws the translated boxes.
+- `Sources/Lens/`: reading other apps' text. `AXTextReader.swift` reads the accessibility tree: the selection or
+  the paragraph under the pointer, or the visible lines and paragraphs of the window under a region (found with
+  `CGWindowList`). `BubbleController.swift` runs the Translate at Pointer card (`Resources/bubble.html`);
+  `LensController.swift` runs the Translation Lens panel (`Resources/lens.html`), its change notifications
+  (`AXObserver`) and cache. Both translate through `LineTranslator` in `Translation.swift`.
 - `Resources/index.html` + `app.css`: the page, running in a `WKWebView`. `renderer.js` renders the clipboard,
   `settings.js` runs the settings tabs, and `settings-features.js`, `settings-ai.js` and `settings-about.js` fill
   their tabs. `i18n.js` is the string engine; each module registers its own English and Hebrew strings.

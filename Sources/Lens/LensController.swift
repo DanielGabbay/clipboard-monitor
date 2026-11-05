@@ -4,13 +4,16 @@ import ApplicationServices
 
 // MARK: - Translation Lens
 //
-// A floating, see-through panel. The text of the window under it is read from that app's accessibility tree
-// (AXTextReader), translated line by line (LineTranslator) and drawn by Resources/lens.html on top of each
-// original line. The panel's toolbar strip and its edges take the mouse (drag, resize, buttons); everywhere else
-// clicks and scrolling pass through to the app below.
+// A floating panel over another window. The text of that window is read from its accessibility tree
+// (AXTextReader) and translated paragraph by paragraph (LineTranslator). Two modes (setting "lensMode"):
+// - "reading" (default): Resources/lens.html shows the translation as a scrollable document, in reading order.
+// - "overlay": a box with the translation on top of each original line. The toolbar strip and the edges take the
+//   mouse; everywhere else clicks and scrolling pass through to the app below.
 //
 // Page -> native: {cmd: "ready" | "dragZones" | "set" | "refresh" | "close" | "openAXSettings"}
-// Native -> page: lens.setup({lang, target, targets, auto}), lens.render({spans: [{x, y, w, h, line, text}], status, detail?}),
+// Native -> page: lens.setup({lang, target, targets, auto, mode}),
+//                 lens.render({mode: "overlay", spans: [{x, y, w, h, line, text}], status, detail?})
+//                 lens.render({mode: "reading", blocks: [{text, state: "ok" | "same" | "pending"}], status, detail?}),
 //                 lens.status({status, detail?}), lens.clear()
 //   status: "permission" | "noWindow" | "ignored" | "empty" | "reading" | "translating" | "ok" | "error"
 
@@ -44,6 +47,7 @@ final class LensController: NSObject, NSWindowDelegate, WKNavigationDelegate {
     static let headerHeight: CGFloat = 30
     static let edge: CGFloat = 6
     static let autoInterval: TimeInterval = 1.5
+    static var reading: Bool { Settings.string("lensMode") != "overlay" }
 
     let panel: NSPanel
     let web: DragWebView
@@ -149,7 +153,8 @@ final class LensController: NSObject, NSWindowDelegate, WKNavigationDelegate {
 
     private func sendSetup() {
         call("lens.setup", ["lang": Loc.lang, "target": Settings.string("lensTarget"),
-                            "targets": Settings.string("translateTargets"), "auto": Settings.bool("lensAutoRefresh")])
+                            "targets": Settings.string("translateTargets"), "auto": Settings.bool("lensAutoRefresh"),
+                            "mode": Self.reading ? "reading" : "overlay"])
     }
 
     fileprivate func handle(_ message: WKScriptMessage) {
@@ -216,7 +221,8 @@ final class LensController: NSObject, NSWindowDelegate, WKNavigationDelegate {
             let header = Self.headerHeight * web.pageZoom
             let inHeader = p.y >= f.maxY - header
             let nearEdge = p.x < f.minX + Self.edge || p.x > f.maxX - Self.edge || p.y < f.minY + Self.edge
-            pass = !inHeader && !nearEdge
+            // Reading mode is a document of its own (it scrolls); only the overlay lets the mouse through.
+            pass = !inHeader && !nearEdge && !Self.reading
         }
         if panel.ignoresMouseEvents != pass { panel.ignoresMouseEvents = pass }
     }
@@ -276,9 +282,11 @@ final class LensController: NSObject, NSWindowDelegate, WKNavigationDelegate {
 
         reading = true
         if lastSpans == nil { call("lens.status", ["status": "reading"]) }
+        let documentMode = Self.reading
         readQueue.async {
             let firstTime = AXTextReader.enableManualAccessibility(target.pid)
-            let spans = AXTextReader.read(target, region: region)
+            let lines = AXTextReader.read(target, region: region)
+            let spans = documentMode ? AXTextReader.joinLines(lines) : lines
             DispatchQueue.main.async {
                 LensController.shared?.didRead(spans, region: region, target: target, treeJustEnabled: firstTime)
             }
@@ -319,6 +327,7 @@ final class LensController: NSObject, NSWindowDelegate, WKNavigationDelegate {
     private func key(_ lang: String, _ text: String) -> String { lang + "\u{1}" + text }
 
     private func render(_ spans: [LensSpan], region: CGRect, lang: String, status: String?, detail: String? = nil) {
+        if Self.reading { renderDocument(spans, lang: lang, status: status, detail: detail); return }
         let z = web.pageZoom
         var items: [[String: Any]] = []
         for s in spans {
@@ -326,7 +335,29 @@ final class LensController: NSObject, NSWindowDelegate, WKNavigationDelegate {
             items.append(["x": (s.rect.minX - region.minX) / z, "y": (s.rect.minY - region.minY) / z,
                           "w": s.rect.width / z, "h": s.rect.height / z, "line": s.singleLine, "text": t])
         }
-        var msg: [String: Any] = ["spans": items, "status": status ?? (items.isEmpty && !spans.isEmpty ? "translating" : "ok")]
+        var msg: [String: Any] = ["mode": "overlay", "spans": items, "status": status ?? (items.isEmpty && !spans.isEmpty ? "translating" : "ok")]
+        if let detail, !detail.isEmpty { msg["detail"] = detail }
+        call("lens.render", msg)
+    }
+
+    /// Reading mode: the paragraphs in reading order (top to bottom; right to left within a row of RTL text).
+    /// Paragraphs still being translated show their source, muted.
+    private func renderDocument(_ spans: [LensSpan], lang: String, status: String?, detail: String?) {
+        let ordered = spans.sorted { a, b in
+            let tol = min(a.rect.height, b.rect.height, 24) * 0.5
+            if abs(a.rect.minY - b.rect.minY) > tol { return a.rect.minY < b.rect.minY }
+            return AXTextReader.isRTL(a.text) ? a.rect.maxX > b.rect.maxX : a.rect.minX < b.rect.minX
+        }
+        var blocks: [[String: Any]] = []
+        var waiting = false
+        for s in ordered {
+            switch cache[key(lang, s.text)] {
+            case .text(let t)?: blocks.append(["text": t, "state": "ok"])
+            case .same?: blocks.append(["text": s.text, "state": "same"])
+            default: blocks.append(["text": s.text, "state": "pending"]); waiting = true
+            }
+        }
+        var msg: [String: Any] = ["mode": "reading", "blocks": blocks, "status": status ?? (waiting ? "translating" : "ok")]
         if let detail, !detail.isEmpty { msg["detail"] = detail }
         call("lens.render", msg)
     }

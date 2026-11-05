@@ -19,6 +19,8 @@ struct LensSpan: Hashable, Sendable {
     let rect: CGRect
     /// True when `rect` is a single line (its height is the line height).
     let singleLine: Bool
+    /// The source text has a line break right after this line (end of a paragraph in an editor).
+    var breakAfter = false
 }
 
 /// The window under the lens.
@@ -79,12 +81,16 @@ enum AXTextReader {
     // MARK: Chromium / Electron
 
     private static var manualEnabled = Set<pid_t>()
+    private static let manualLock = NSLock()
 
     /// Chrome, Edge, Slack, VS Code, Teams and other Chromium / Electron apps build their accessibility tree only
     /// when asked. Returns true the first time it is switched on for `pid`: the tree then appears a moment later.
+    /// Called from the lens and the bubble queues.
     static func enableManualAccessibility(_ pid: pid_t) -> Bool {
-        guard !manualEnabled.contains(pid) else { return false }
-        manualEnabled.insert(pid)
+        manualLock.lock()
+        let first = manualEnabled.insert(pid).inserted
+        manualLock.unlock()
+        guard first else { return false }
         let app = AXUIElementCreateApplication(pid)
         return AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue) == .success
     }
@@ -184,10 +190,10 @@ enum AXTextReader {
         var rects: [CGRect] = []
         var lineHeight = CGFloat.greatestFiniteMagnitude
         for (c, a) in children {
-            guard let (t, r, h) = inline(c, a, depth: 0, budget: &budget) else { return nil }
-            text += t
-            rects += r
-            lineHeight = min(lineHeight, h)
+            guard let item = inline(c, a, depth: 0, budget: &budget) else { return nil }
+            text += item.0
+            rects += item.1
+            lineHeight = min(lineHeight, item.2)
         }
         let clean = tidy(text)
         guard clean.contains(where: { $0.isLetter }), let first = rects.first else { return nil }
@@ -213,8 +219,8 @@ enum AXTextReader {
             for c in a.children {
                 guard budget > 0 else { return nil }
                 budget -= 1
-                guard let (t, r, ch) = inline(c, Attrs(c), depth: depth + 1, budget: &budget) else { return nil }
-                text += t; rects += r; h = min(h, ch)
+                guard let item = inline(c, Attrs(c), depth: depth + 1, budget: &budget) else { return nil }
+                text += item.0; rects += item.1; h = min(h, item.2)
             }
             // A group taller than about two lines is a block, not a span inside a line.
             if let f = a.frame, h < .greatestFiniteMagnitude, f.height > h * 2.2 { return nil }
@@ -251,8 +257,10 @@ enum AXTextReader {
             guard b.intersects(region) else { continue }
             let loc = lr.location
             let len = min(lr.length, length - loc)
-            let text = tidy(ns.substring(with: NSRange(location: loc, length: len)))
-            if text.contains(where: { $0.isLetter }) { out.append(LensSpan(text: text, rect: b, singleLine: true)) }
+            let raw = ns.substring(with: NSRange(location: loc, length: len))
+            let text = tidy(raw)
+            let breakAfter = raw.last.map { $0.isNewline } ?? false
+            if text.contains(where: { $0.isLetter }) { out.append(LensSpan(text: text, rect: b, singleLine: true, breakAfter: breakAfter)) }
         }
         return any ? out : nil
     }
@@ -264,6 +272,109 @@ enum AXTextReader {
         return n
     }
 
+    // MARK: text at the pointer (Translate at Pointer bubble)
+
+    /// What the bubble translates: the selection when the pointer is on or near it, else the paragraph under the
+    /// pointer. `anchor` is where the text sits on screen (global, top-left based).
+    struct PointerText: Sendable {
+        let text: String
+        let anchor: CGRect
+        let pid: pid_t
+    }
+
+    static let maxPointerText = 4000
+
+    static func textAtPointer(_ p: CGPoint, excluding myPid: pid_t) -> PointerText? {
+        let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.5)
+        if let s = selection(system, near: p, excluding: myPid) { return s }
+        var hit: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(system, Float(p.x), Float(p.y), &hit) == .success, let el = hit else { return nil }
+        var pid: pid_t = 0
+        AXUIElementGetPid(el, &pid)
+        guard pid != myPid else { return nil }
+        AXUIElementSetMessagingTimeout(el, 0.5)
+        guard let found = text(at: el, point: p) else { return nil }
+        let clean = String(tidy(found.0).prefix(maxPointerText))
+        guard clean.contains(where: { $0.isLetter }) else { return nil }
+        return PointerText(text: clean, anchor: found.1, pid: pid)
+    }
+
+    /// Selected text of the focused element, when the pointer is on it or close to it (a selection left behind in
+    /// another place must not win over what the user points at).
+    private static func selection(_ system: AXUIElement, near p: CGPoint, excluding myPid: pid_t) -> PointerText? {
+        guard let focused = element(copy(system, kAXFocusedUIElementAttribute)) else { return nil }
+        var pid: pid_t = 0
+        AXUIElementGetPid(focused, &pid)
+        guard pid != myPid else { return nil }
+        AXUIElementSetMessagingTimeout(focused, 0.5)
+        if role(of: focused) == "AXSecureTextField" || (copy(focused, kAXSubroleAttribute) as? String) == "AXSecureTextField" { return nil }
+        guard let selected = copy(focused, kAXSelectedTextAttribute) as? String else { return nil }
+        let text = tidy(selected)
+        guard text.contains(where: { $0.isLetter }) else { return nil }
+        var anchor: CGRect?
+        if let v = copy(focused, kAXSelectedTextRangeAttribute), var r = cfRange(v), r.location >= 0, r.length > 0,
+           let arg = AXValueCreate(.cfRange, &r), let b = cgRect(param(focused, kAXBoundsForRangeParameterizedAttribute, arg)),
+           b.width > 0 || b.height > 0 {
+            anchor = b
+        }
+        // Without bounds, trust the selection only when the pointer is inside the focused element.
+        let near = anchor ?? frame(of: focused) ?? .null
+        guard !near.isNull, near.insetBy(dx: -60, dy: -60).contains(p) else { return nil }
+        return PointerText(text: String(text.prefix(maxPointerText)), anchor: anchor ?? CGRect(origin: p, size: .zero), pid: pid)
+    }
+
+    /// The paragraph that contains `el`, or its own text.
+    private static func text(at el: AXUIElement, point p: CGPoint) -> (String, CGRect)? {
+        let a = Attrs(el)
+        if a.role == "AXSecureTextField" || a.subrole == "AXSecureTextField" { return nil }
+        if ["AXTextArea", "AXTextField", "AXComboBox"].contains(a.role), let value = a.value, !value.isEmpty {
+            return editorParagraph(el, value: value, point: p) ?? a.frame.map { (value, $0) }
+        }
+        if titleRoles.contains(a.role), let t = a.title, !t.isEmpty, let f = a.frame { return (t, f) }
+
+        // A text run: its paragraph is a parent (or a grandparent, when the run sits inside a link or inline code).
+        var budget = 600
+        var current: AXUIElement? = a.role == "AXStaticText" ? element(copy(el, kAXParentAttribute)) : el
+        for _ in 0..<4 {
+            guard let c = current, budget > 0 else { break }
+            let ca = Attrs(c)
+            var kids: [(AXUIElement, Attrs)] = []
+            for k in ca.children.prefix(200) {
+                guard budget > 0 else { break }
+                budget -= 1
+                kids.append((k, Attrs(k)))
+            }
+            if let para = paragraph(kids, budget: &budget) { return (para.text, para.rect) }
+            // A paragraph with a single run (<p>plain text</p>).
+            if kids.count == 1, kids[0].1.role == "AXStaticText", let t = kids[0].1.value, let f = kids[0].1.frame { return (t, f) }
+            current = element(copy(c, kAXParentAttribute))
+        }
+        if a.role == "AXStaticText", let t = a.value ?? a.title, let f = a.frame { return (t, f) }
+        return nil
+    }
+
+    /// The paragraph under the pointer inside an editor or a long text view.
+    private static func editorParagraph(_ el: AXUIElement, value: String, point p: CGPoint) -> (String, CGRect)? {
+        let ns = value as NSString
+        var pt = p
+        guard let arg = AXValueCreate(.cgPoint, &pt),
+              let r = cfRange(param(el, kAXRangeForPositionParameterizedAttribute, arg)),
+              r.location >= 0, r.location <= ns.length else { return nil }
+        var range = ns.paragraphRange(for: NSRange(location: min(r.location, max(0, ns.length - 1)), length: 0))
+        if range.length > 2000 { range = ns.lineRange(for: NSRange(location: min(r.location, max(0, ns.length - 1)), length: 0)) }
+        if range.length > 2000 { range = NSRange(location: range.location, length: 2000) }
+        let text = ns.substring(with: range)
+        var cf = CFRange(location: range.location, length: range.length)
+        let bounds = AXValueCreate(.cfRange, &cf).flatMap { cgRect(param(el, kAXBoundsForRangeParameterizedAttribute, $0)) }
+        return (text, bounds ?? CGRect(origin: p, size: .zero))
+    }
+
+    private static func element(_ v: CFTypeRef?) -> AXUIElement? {
+        guard let v, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
+        return (v as! AXUIElement)
+    }
+
     // MARK: post-processing
 
     /// Keeps the part of each span inside the region. A line cut by the top or bottom edge is dropped unless most
@@ -273,7 +384,7 @@ enum AXTextReader {
             let i = s.rect.intersection(region)
             guard !i.isNull, i.width > 2, i.height > 2 else { return nil }
             if s.singleLine && i.height < s.rect.height * 0.6 { return nil }
-            return LensSpan(text: s.text, rect: i, singleLine: s.singleLine)
+            return LensSpan(text: s.text, rect: i, singleLine: s.singleLine, breakAfter: s.breakAfter)
         }
     }
 
@@ -293,7 +404,8 @@ enum AXTextReader {
             let rtl = isRTL(joinedLTR)
             let ordered = rtl ? group.sorted { $0.rect.maxX > $1.rect.maxX } : group
             let rect = group.dropFirst().reduce(first.rect) { $0.union($1.rect) }
-            out.append(LensSpan(text: ordered.map(\.text).joined(separator: " "), rect: rect, singleLine: true))
+            out.append(LensSpan(text: ordered.map(\.text).joined(separator: " "), rect: rect, singleLine: true,
+                                breakAfter: group.contains { $0.breakAfter }))
             group.removeAll()
         }
         for s in sorted {
@@ -310,6 +422,34 @@ enum AXTextReader {
         }
         flush()
         return out
+    }
+
+    /// Reading mode: consecutive lines of one paragraph (same left edge and line height, no gap) become one span,
+    /// so editors and text views that report lines are translated paragraph by paragraph.
+    static func joinLines(_ spans: [LensSpan]) -> [LensSpan] {
+        var out: [LensSpan] = []
+        for s in spans.sorted(by: { $0.rect.minY < $1.rect.minY }) {
+            if let prev = out.last, s.singleLine, !prev.breakAfter {
+                let h = s.rect.height
+                let lastLineBottom = prev.rect.maxY
+                let gap = s.rect.minY - lastLineBottom
+                let sameEdge = abs(s.rect.minX - prev.rect.minX) < 6 || abs(s.rect.maxX - prev.rect.maxX) < 6
+                let prevLine = prev.singleLine ? prev.rect.height : h
+                if sameEdge && gap > -h * 0.3 && gap < h * 0.5 && abs(prevLine - h) < h * 0.25 && !endsParagraph(prev.text) {
+                    out[out.count - 1] = LensSpan(text: prev.text + " " + s.text, rect: prev.rect.union(s.rect),
+                                                  singleLine: false, breakAfter: s.breakAfter)
+                    continue
+                }
+            }
+            out.append(s)
+        }
+        return out
+    }
+
+    /// A line that ends with a colon or looks like a heading or list item starts a new paragraph after it.
+    private static func endsParagraph(_ s: String) -> Bool {
+        guard let last = s.trimmingCharacters(in: .whitespaces).last else { return true }
+        return last == ":"
     }
 
     static func isRTL(_ s: String) -> Bool {

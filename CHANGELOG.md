@@ -21,13 +21,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   URLs untouched, with Apple's on-device translation as an alternative engine and as a fallback.
 - "Translate to…" for any target language in the list, next to the automatic Hebrew ↔ English translation.
 - About tab with the version, build number, commit, build date, macOS version and the release notes.
-- Translation Lens (View › Translation Lens, ⌥⌘T, or a global shortcut, ⌃⌥T by default): a floating see-through
-  panel that translates the text of the app under it and draws each translated line on top of the original. The
-  text is read from the app's accessibility tree, so it is exact (Hebrew included) and needs no screenshots, only
-  the Accessibility permission. Clicks and scrolling pass through the panel, it follows changes below it
-  automatically (or on demand), caches translations, skips password fields and respects the ignored apps list.
-  Chrome and Electron apps (Slack, VS Code, Teams) are asked to expose their text. Images, video and scanned PDFs
-  are not supported yet.
+- Translate at Pointer (⌃⌥T from any app, or View › Translate at Pointer): point at a paragraph or select text in
+  any app, and its translation opens in a card next to it, with the original, Copy and "Open in Clipboard
+  Monitor". The text is read from the app's accessibility tree (exact, Hebrew included, no clipboard), which
+  needs the Accessibility permission. Chrome and Electron apps (Slack, VS Code, Teams) are asked to expose their
+  text. Password fields and ignored apps are skipped.
+- Translation Lens (⌃⌥⌘T, or View › Translation Lens, ⌥⌘T): a floating panel that shows the text of the window
+  under it as a translated, scrollable document, paragraph by paragraph, and follows changes below it (or on
+  demand). "Over the text" draws each translation on top of its line instead. Images, video and scanned PDFs are
+  not supported yet.
 
 ### Changed
 - The build stamps the version from `VERSION`, the build number from the commit count, and the commit and build

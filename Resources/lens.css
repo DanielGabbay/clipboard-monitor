@@ -50,4 +50,13 @@ body.peek #layer { visibility: hidden; }
   box-shadow: 0 0 0 1px rgba(127, 127, 127, .18);
 }
 .t.line { white-space: nowrap; text-overflow: ellipsis; }
+
+/* Reading mode: the region is an opaque, scrollable document. */
+body.reading #layer {
+  pointer-events: auto; overflow: auto; background: var(--box); padding: 10px 14px 12px; border-radius: 0 0 8px 8px;
+  -webkit-user-select: text; user-select: text;
+}
+.doc { margin: 0 0 .65em; font-size: 14px; line-height: 1.5; unicode-bidi: plaintext; text-align: start; overflow-wrap: anywhere; }
+.doc.same, .doc.pending { color: var(--muted); }
+.doc code { font: .88em ui-monospace, "SF Mono", Menlo, monospace; background: var(--bar); border-radius: 4px; padding: 0 3px; direction: ltr; unicode-bidi: isolate; }
 .t.block { white-space: normal; overflow-wrap: anywhere; }

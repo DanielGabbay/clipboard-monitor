@@ -1,0 +1,47 @@
+/* Translate at Pointer card (bubble.html). The window is transparent; the card is the only painted part and its
+   shadow lives in the body padding (BubbleController.margin). */
+:root {
+  --bg: #fbfbfa; --fg: #1d1d1f; --muted: #6e6e73; --line: #e0e0dc; --accent: #2f6fde; --danger: #c62828;
+  --code-bg: #efefec;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #232325; --fg: #ececec; --muted: #a1a1a6; --line: #3a3a3c; --accent: #5b8ff0; --danger: #ff6b6b; --code-bg: #2f2f32; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; background: transparent; overflow: hidden; }
+body {
+  padding: 10px; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Arial Hebrew", sans-serif;
+  color: var(--fg); -webkit-user-select: text; user-select: text;
+}
+#card {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .18), 0 1px 3px rgba(0, 0, 0, .12);
+  max-height: calc(100vh - 20px); overflow: auto;
+}
+.bar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; -webkit-user-select: none; user-select: none; }
+.name { font-weight: 600; color: var(--accent); font-size: 12px; }
+.grow { flex: 1; }
+select {
+  font: inherit; font-size: 12px; color: var(--fg); background: transparent; border: 1px solid var(--line);
+  border-radius: 5px; padding: 1px 4px; max-width: 150px;
+}
+.tb {
+  color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 5px;
+  width: 24px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.tb:hover:not(:disabled) { color: var(--fg); border-color: var(--line); }
+.tb:disabled { opacity: .35; cursor: default; }
+.text { font-size: 15px; line-height: 1.5; }
+.text p { margin: 0 0 .5em; unicode-bidi: plaintext; text-align: start; overflow-wrap: anywhere; }
+.text p:last-child { margin-bottom: 0; }
+.text.same { color: var(--muted); }
+code { font: .88em ui-monospace, "SF Mono", Menlo, monospace; background: var(--code-bg); border-radius: 4px; padding: 0 3px; direction: ltr; unicode-bidi: isolate; }
+.status { color: var(--muted); font-size: 12px; }
+.status:empty { display: none; }
+.status.error { color: var(--danger); }
+.text:not(:empty) + .status { margin-top: 6px; }
+.link { font: inherit; font-size: 12px; color: var(--accent); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; margin-top: 4px; }
+details { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 6px; }
+summary { color: var(--muted); font-size: 12px; cursor: pointer; -webkit-user-select: none; user-select: none; }
+.srctext { color: var(--muted); font-size: 12.5px; margin-top: 4px; white-space: pre-wrap; unicode-bidi: plaintext; text-align: start; max-height: 160px; overflow: auto; }

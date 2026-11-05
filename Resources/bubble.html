@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Translate at Pointer</title>
+<link rel="stylesheet" href="bubble.css">
+</head>
+<body>
+<!-- Translate at Pointer card (BubbleController.swift). Esc or a click outside closes it. -->
+<div id="card" role="dialog" aria-live="polite">
+  <div class="bar">
+    <span class="name" data-i18n="bubble.name">Translation</span>
+    <select id="target" dir="auto" data-i18n-title="bubble.target.title"></select>
+    <span class="grow"></span>
+    <button id="copy" class="tb icon" data-i18n-title="bubble.copy.title" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-1A1.5 1.5 0 0 0 9 3H4a1.5 1.5 0 0 0-1.5 1.5V9A1.5 1.5 0 0 0 4 10.5h1.5"/></svg></button>
+    <button id="open" class="tb icon" data-i18n-title="bubble.open.title" disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5 7.5 8.5M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/></svg></button>
+    <button id="close" class="tb icon" data-i18n-title="bubble.close.title"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+  </div>
+  <div id="text" class="text"></div>
+  <div id="status" class="status"></div>
+  <button id="ax" class="link" hidden data-i18n="bubble.permission.open">Open Settings</button>
+  <details id="src" hidden><summary data-i18n="bubble.source">Original</summary><div id="srctext" class="srctext"></div></details>
+</div>
+<script src="i18n.js"></script>
+<script src="bubble.js"></script>
+</body>
+</html>
