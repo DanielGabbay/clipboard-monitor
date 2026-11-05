@@ -1,0 +1,32 @@
+/* Settings › Translation tab, plus the translate split button / menu in the action bar (renderer.js). */
+#settings .translate-tab [hidden] { display: none !important; }
+#settings .translate-tab .t-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 8px 0 2px;
+  padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; font-size: 12.5px; line-height: 1.4; }
+#settings .translate-tab .t-notice > span { flex: 1 1 160px; }
+#settings .translate-tab .t-notice.t-ai-off { border-color: var(--warn); color: var(--warn); }
+#settings .translate-tab .t-notice.t-ai-off .btn { color: var(--fg); }
+#settings .translate-tab .t-model-pick { max-width: 55%; }
+#settings .translate-tab .t-model-none { display: block; font-size: 12px; margin-block-start: 2px; }
+#settings .translate-tab .t-model-none a { color: var(--accent); text-decoration: none; }
+#settings .translate-tab .t-model-none a:hover { text-decoration: underline; }
+#settings .translate-tab .t-targets-row { display: block; }
+#settings .translate-tab .t-targets { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 3px 12px;
+  margin-block-start: 8px; }
+#settings .translate-tab .t-targets label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; cursor: default; }
+#settings .translate-tab .t-targets input { margin: 0; }
+
+/* Action bar: Translate + ▾ menu of target languages */
+.actions .tr-split { display: inline-flex; position: relative; }
+.actions .tr-split > button:first-child { border-start-end-radius: 0; border-end-end-radius: 0; }
+.actions .tr-split > button.tr-more { border-start-start-radius: 0; border-end-start-radius: 0; border-inline-start-width: 0;
+  padding-inline: 6px; }
+/* The menu inherits the page direction, so its scrollbar sits on the inline-end side. */
+.tr-menu { position: absolute; z-index: 15; inset-block-start: calc(100% + 3px); inset-inline-start: 0; min-width: 170px;
+  max-height: min(260px, 60vh); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 4px;
+  border-radius: 8px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 8px 28px #0003; font-size: 13px; }
+.tr-menu .tm-title { padding: 3px 10px 4px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.tr-menu .mi { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 5px; cursor: default; white-space: nowrap; }
+.tr-menu .mi:hover, .tr-menu .mi:focus { background: var(--accent); color: var(--on-accent, #fff); outline: none; }
+.tr-menu .mi.cur::after { content: "✓"; margin-inline-start: auto; opacity: .7; }
+.actions .tr-note { font-size: 12px; }
+.actions .tr-warn { font-size: 12px; color: var(--warn); flex-basis: 100%; }
