@@ -1,12 +1,13 @@
 // Hebrew native UI strings. Same keys as Loc.en in Localization.swift; missing keys fall back to English.
-// Wording follows the macOS Hebrew menus (קובץ, עריכה, תצוגה, חלון...).
+// Wording follows the macOS Hebrew menus (קובץ, עריכה, תצוגה, חלון, "בחר הכל", "צא מ־…") and the glossary at the
+// top of Resources/i18n-core-he.js: imperative commands, maqaf before Latin words, "לוח" for the clipboard.
 extension Loc {
     static let he: [String: String] = [
         "menu.app.about": "אודות Clipboard Monitor",
         "menu.app.settings": "הגדרות…",
         "menu.app.loginItem": "פתח בעת התחברות",
         "menu.app.hide": "הסתר",
-        "menu.app.quit": "צא מ-Clipboard Monitor",
+        "menu.app.quit": "צא מ־Clipboard Monitor",
         "menu.file": "קובץ",
         "menu.file.newWindow": "חלון חדש",
         "menu.file.newTab": "כרטיסייה חדשה",
@@ -20,19 +21,19 @@ extension Loc {
         "menu.view.appearance.system": "לפי המערכת",
         "menu.view.appearance.light": "בהיר",
         "menu.view.appearance.dark": "כהה",
-        "menu.view.onTop": "תמיד למעלה",
+        "menu.view.onTop": "תמיד מעל חלונות אחרים",
         "menu.view.allSpaces": "הצג בכל שולחנות העבודה",
         "menu.view.pause": "השהה ניטור",
-        "menu.view.hold": "החזק פריט זה (הפסק לעקוב)",
-        "menu.view.raw": "טקסט גולמי / מעוצב",
+        "menu.view.hold": "החזק את הפריט הזה (הפסק לעקוב)",
+        "menu.view.raw": "גולמי / מעוצב",
         "menu.view.history": "היסטוריה",
         "menu.view.clearHistory": "נקה היסטוריה",
         "menu.view.zoomIn": "הגדל",
         "menu.view.zoomOut": "הקטן",
         "menu.view.actualSize": "גודל אמיתי",
-        "menu.view.snapRight": "הצמד לקצה הימני",
+        "menu.view.snapRight": "הזז לקצה הימני של המסך",
         "menu.window": "חלון",
-        "menu.window.showHide": "הצג / הסתר חלונות ניטור",
+        "menu.window.showHide": "הצג / הסתר את החלונות",
         "menu.window.minimize": "מזער",
         "alert.loginItem.title": "לא ניתן לשנות את הפתיחה בעת התחברות",
     ]

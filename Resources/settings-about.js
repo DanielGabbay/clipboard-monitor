@@ -1,4 +1,4 @@
-// Settings › About: version, build, commit, build date, macOS version and the release notes of this version.
+// Settings › About: version (build) in the header line, then commit, build date, macOS version and the release notes.
 // Asks the app with {cmd:'version'} on mount and renders the answer (CM.on('versionInfo'); Sources/Version.swift):
 //   {version, build, commit, buildDate (ISO 8601), dirty, os, changelog (CHANGELOG.md text)}
 (function () {
@@ -8,8 +8,6 @@
       'settings.about.tagline': 'The clipboard on screen, rendered properly, for mixed Hebrew and English text.',
       'settings.about.versionLine': 'Version {version} (build {build})',
       'settings.about.details': 'Details',
-      'settings.about.version': 'Version',
-      'settings.about.build': 'Build',
       'settings.about.commit': 'Commit',
       'settings.about.commit.copy': 'Click to copy',
       'settings.about.modified': 'modified',
@@ -24,32 +22,30 @@
       'settings.about.loading': 'Loading…',
       'settings.about.unknown': 'unknown',
       'settings.about.more': 'More',
-      'settings.about.license': 'MIT License. The full text is in LICENSE next to the source code.',
-      'settings.about.readme': 'Building, signing and releasing are described in README.md in the project folder.',
+      'settings.about.license': 'MIT License. The full text is in the LICENSE file next to the source code.',
+      'settings.about.readme': 'README.md in the project folder describes how to build, sign and release.',
       'settings.about.thirdParty': 'Includes marked (MIT) and highlight.js (BSD-3-Clause).',
     },
     he: {
-      'settings.about.tagline': 'הלוח מוצג על המסך, מרונדר כמו שצריך, גם לטקסט מעורב בעברית ובאנגלית.',
+      'settings.about.tagline': 'הלוח על המסך, מוצג כמו שצריך, גם כשהטקסט מעורב בעברית ובאנגלית.',
       'settings.about.versionLine': 'גרסה {version} (build {build})',
       'settings.about.details': 'פרטים',
-      'settings.about.version': 'גרסה',
-      'settings.about.build': 'Build',
       'settings.about.commit': 'Commit',
-      'settings.about.commit.copy': 'לחיצה מעתיקה',
+      'settings.about.commit.copy': 'לחץ להעתקה',
       'settings.about.modified': 'שונה',
-      'settings.about.modified.hint': 'נבנה עם שינויים שלא נשמרו ב-commit',
-      'settings.about.buildDate': 'תאריך build',
+      'settings.about.modified.hint': 'נבנה עם שינויים שלא נכללו ב־commit',
+      'settings.about.buildDate': 'תאריך בנייה',
       'settings.about.os': 'macOS',
-      'settings.about.whatsNew': 'מה חדש ב-{version}',
+      'settings.about.whatsNew': 'מה חדש ב־{version}',
       'settings.about.noNotes': 'אין הערות שחרור לגרסה הזו.',
       'settings.about.copyInfo': 'העתק פרטי גרסה',
       'settings.about.copied': 'פרטי הגרסה הועתקו',
-      'settings.about.commitCopied': 'ה-commit הועתק',
+      'settings.about.commitCopied': 'ה־commit הועתק',
       'settings.about.loading': 'טוען…',
       'settings.about.unknown': 'לא ידוע',
       'settings.about.more': 'עוד',
-      'settings.about.license': 'רישיון MIT. הנוסח המלא בקובץ LICENSE שליד קוד המקור.',
-      'settings.about.readme': 'בנייה, חתימה ושחרור גרסה מתוארים ב-README.md שבתיקיית הפרויקט.',
+      'settings.about.license': 'רישיון MIT. הנוסח המלא נמצא בקובץ LICENSE לצד קוד המקור.',
+      'settings.about.readme': 'בנייה, חתימה ושחרור גרסה מתוארים ב־README.md שבתיקיית הפרויקט.',
       'settings.about.thirdParty': 'כולל את marked (MIT) ואת highlight.js (BSD-3-Clause).',
     },
   });
@@ -118,6 +114,8 @@
     return r;
   }
 
+  // Notes are <div>s, not <p>s: the renderer's BiDi pass treats every <p> on the page as a block and would flip a
+  // Hebrew sentence full of Latin names (marked, highlight.js) to LTR. Divs follow the interface direction.
   function render() {
     if (!root) return;
     root.innerHTML = '';
@@ -130,14 +128,11 @@
     if (info) vl.textContent = t('settings.about.versionLine', { version: info.version || '?', build: info.build || '?' });
     else vl.textContent = t('settings.about.loading');
     head.appendChild(vl);
-    head.appendChild(h('p', 'note about-tagline', t('settings.about.tagline')));
+    head.appendChild(h('div', 'note about-tagline', t('settings.about.tagline')));
     wrap.appendChild(head);
     if (!info) return;
 
     wrap.appendChild(h('h3', null, t('settings.about.details')));
-    wrap.appendChild(row(t('settings.about.version'), info.version || t('settings.about.unknown')));
-    wrap.appendChild(row(t('settings.about.build'), info.build || t('settings.about.unknown')));
-
     // Commit: click to copy, plus a "modified" marker for builds with uncommitted changes.
     const c = row(t('settings.about.commit'), info.commit || t('settings.about.unknown'));
     const cv = c.querySelector('.about-value');
@@ -164,7 +159,7 @@
     wrap.appendChild(row(t('settings.about.os'), info.os || t('settings.about.unknown')));
 
     const btns = h('div', 'row-btns');
-    const copyBtn = h('button', null, t('settings.about.copyInfo'));
+    const copyBtn = h('button', 'btn about-copy', t('settings.about.copyInfo'));
     copyBtn.onclick = () => { CM.native({ cmd: 'copy', text: plainInfo(info) }); CM.toast(t('settings.about.copied')); };
     btns.appendChild(copyBtn);
     wrap.appendChild(btns);
@@ -180,13 +175,13 @@
       box.querySelectorAll('a').forEach((a) => { a.removeAttribute('href'); });   // no navigation inside the panel
       wrap.appendChild(box);
     } else {
-      wrap.appendChild(h('p', 'note', t('settings.about.noNotes')));
+      wrap.appendChild(h('div', 'note', t('settings.about.noNotes')));
     }
 
     wrap.appendChild(h('h3', null, t('settings.about.more')));
-    wrap.appendChild(h('p', 'note', t('settings.about.readme')));
-    wrap.appendChild(h('p', 'note', t('settings.about.license')));
-    wrap.appendChild(h('p', 'note', t('settings.about.thirdParty')));
+    wrap.appendChild(h('div', 'note', t('settings.about.readme')));
+    wrap.appendChild(h('div', 'note', t('settings.about.license')));
+    wrap.appendChild(h('div', 'note', t('settings.about.thirdParty')));
   }
 
   CM.on('versionInfo', (i) => { info = i || null; render(); });
