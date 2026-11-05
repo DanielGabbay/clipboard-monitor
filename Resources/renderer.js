@@ -8,6 +8,23 @@
   const MAX_SAVED_IMAGE = 400000; // data-URL chars; bigger images are shown but not kept across restarts
 
   const S = CM.S;   // live settings object shared with settings.js (mutated in place, never replaced)
+  const on = (name) => CM.feature(name);   // feature switches (Settings › Features)
+
+  // Strings added with the feature switches / translate-to work (the core strings are in i18n-core-*.js).
+  I18N.register({
+    en: {
+      'tr.translateTo': 'Translate to…', 'tr.translateToLang': 'Translate to {lang}', 'tr.more.title': 'Translate to another language',
+      'tr.auto': 'Hebrew ↔ English (automatic)',
+      'tr.fallback': 'AI translation failed ({error}), used on-device.', 'tr.fallbackNoError': 'AI translation failed, used on-device.',
+      'tr.err.llm': 'AI translation failed: {error}',
+    },
+    he: {
+      'tr.translateTo': 'תרגם ל…', 'tr.translateToLang': 'תרגם ל{lang}', 'tr.more.title': 'תרגום לשפה אחרת',
+      'tr.auto': 'עברית ↔ אנגלית (אוטומטי)',
+      'tr.fallback': 'תרגום ה-AI נכשל ({error}), תורגם במכשיר.', 'tr.fallbackNoError': 'תרגום ה-AI נכשל, תורגם במכשיר.',
+      'tr.err.llm': 'תרגום ה-AI נכשל: {error}',
+    },
+  });
 
   // BiDi: majority detection per block (see toolkit README "Choosing the detection mode").
   // Rich HTML from web pages often holds text directly in <div>s, so leaf divs count as blocks there.
@@ -150,10 +167,10 @@
   // Each detector returns { title, build(card) } or null. Only single-token clips are inspected.
   function detectSmart(item) {
     const txt = (item.text || '').trim();
-    if (!txt || txt.length > 200000) return null;
+    if (!txt || txt.length > 200000 || !on('smartCards')) return null;
     const single = !/\s/.test(txt);
     // JWT
-    if (single && /^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*$/.test(txt)) {
+    if (on('smartJwt') && single && /^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*$/.test(txt)) {
       try {
         const [h, p] = txt.split('.').slice(0, 2).map((x) => JSON.parse(b64decode(x)));
         if (h && h.alg) return { title: t('smart.jwt'), build: (card) => {
@@ -173,7 +190,7 @@
       } catch (e) { /* not a JWT */ }
     }
     // URL
-    if (single && /^https?:\/\/[^\s]+$/i.test(txt)) {
+    if (on('smartLink') && single && /^https?:\/\/[^\s]+$/i.test(txt)) {
       let u; try { u = new URL(txt); } catch (e) { u = null; }
       if (u) return { title: t('smart.link'), build: (card) => {
         const kv = [[t('smart.link.host'), u.host], [t('smart.link.path'), decodeURIComponent(u.pathname)]];
@@ -184,13 +201,13 @@
         const row = elt('div', 'row-btns');
         const open = elt('button', '', t('smart.link.open')); open.onclick = () => native({ cmd: 'open', url: u.href });
         const prev = elt('button', '', t('smart.link.preview')); prev.onclick = () => { prev.dataset.loading = '1'; prev.disabled = true; prev.textContent = t('smart.link.loading'); native({ cmd: 'preview', url: u.href }); };
-        row.append(open, prev); card.appendChild(row);
+        row.append(open); if (on('linkPreview')) row.append(prev); card.appendChild(row);
         const slot = elt('div', 'preview'); slot.dataset.url = u.href; card.appendChild(slot);
         if (previews[u.href]) fillPreview(slot, previews[u.href]);
       } };
     }
     // Color
-    const col = parseColor(txt);
+    const col = on('smartColor') && parseColor(txt);
     if (col) return { title: t('smart.color'), build: (card) => {
       const sw = elt('div', 'swatch'); sw.style.background = txt; card.appendChild(sw);
       const [r, g, b, a] = col, [hh, ss, ll] = rgbToHsl(r, g, b);
@@ -205,15 +222,15 @@
     if (/^\d{10}$/.test(txt)) ms = Number(txt) * 1000;
     else if (/^\d{13}$/.test(txt)) ms = Number(txt);
     else if (/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/.test(txt)) ms = Date.parse(txt);
-    if (ms && ms > Date.UTC(1990, 0) && ms < Date.UTC(2100, 0)) return { title: t('smart.time'), build: (card) => {
+    if (on('smartTime') && ms && ms > Date.UTC(1990, 0) && ms < Date.UTC(2100, 0)) return { title: t('smart.time'), build: (card) => {
       card.appendChild(elt('div', 'big', fullDate(ms)));
       card.appendChild(elt('div', 'note', relTime(ms)));
       card.appendChild(kvTable([['UTC', new Date(ms).toISOString()], [t('smart.time.unixS'), String(Math.floor(ms / 1000))], [t('smart.time.unixMs'), String(ms)]], true));
     } };
     // JSON
-    if (item.fmt === 'json') return { title: t('smart.json'), build: (card) => jsonExplorer(card, JSON.parse(txt)) };
+    if (on('smartJson') && item.fmt === 'json') return { title: t('smart.json'), build: (card) => jsonExplorer(card, JSON.parse(txt)) };
     // Base64 (only when it decodes to readable UTF-8)
-    if (single && txt.length >= 12 && /^[A-Za-z0-9+/_-]+={0,2}$/.test(txt) && !/^\d+$/.test(txt)) {
+    if (on('smartBase64') && single && txt.length >= 12 && /^[A-Za-z0-9+/_-]+={0,2}$/.test(txt) && !/^\d+$/.test(txt)) {
       try {
         const dec = b64decode(txt);
         if (printable(dec)) return { title: t('smart.base64'), build: (card) => {
@@ -399,13 +416,46 @@
   }
 
   // ---- translation ---------------------------------------------------------------------------------
+  // Translations live on the item, one per target: item.translations['auto' | 'ar' | ...] =
+  //   {pending, req, sig} → {text, from, to, engine, model, provider, fallback, sig} or {error, from, to, engine, sig}.
+  // item.trKey is the last chosen target; Show original / Show translation works with it. Neither is saved.
   let translateReq = 0;
-  function requestTranslation(item) {
-    item.translation = { pending: true };
+  const trKeyOf = (target) => target || 'auto';
+  // What a cached translation was made with; a translation from another engine / model is redone on request.
+  const engineSig = () => (S.translateEngine === 'llm' && on('ai') ? 'llm:' + (S.translateProvider || '') + '/' + (S.translateModel || '') : 'apple');
+  const curTr = (it) => (it && it.translations && it.trKey ? it.translations[it.trKey] : null);
+  function requestTranslation(item, target, force) {
+    const key = trKeyOf(target);
+    item.translations = item.translations || {};
+    const have = item.translations[key];
+    item.trKey = key;
+    if (!force && have && (have.pending || (have.text && have.sig === engineSig()))) {
+      if (have.text) view = 'translation';
+      render(); return;
+    }
     const req = String(++translateReq);
-    item.translation.req = req;
-    native({ cmd: 'translate', text: item.text, req });
+    item.translations[key] = { pending: true, req, sig: engineSig() };
+    const msg = { cmd: 'translate', text: item.text, req };
+    if (target) msg.target = target;
+    native(msg);
     render();
+  }
+  function langName(code) {
+    if (!code) return '';
+    try { return new Intl.DisplayNames([I18N.locale], { type: 'language' }).of(code) || code; } catch (e) { return code; }
+  }
+  const targetList = () => String(S.translateTargets || '').split(',').map((x) => x.trim()).filter(Boolean);
+  // Context-menu "Translate to <lang>" entries: the targets except Hebrew / English (the automatic entry covers
+  // them) and the one already shown; at most five so the menu stays short. The ▾ menu lists every target.
+  const menuTargets = (it) => targetList().filter((c) => c !== 'he' && c !== 'en' && !(hasTr(it) && it.trKey === c)).slice(0, 5);
+  // "on-device" for Apple; "model (Provider)" for the AI engine.
+  function engineLabel(tr) {
+    if (tr.engine !== 'llm') return t('tr.onDevice');
+    const pid = tr.provider || S.translateProvider;
+    const p = ((CM.ai && CM.ai.providers) || []).find((x) => x.id === pid);
+    const m = p && (p.models || []).find((x) => x.id === tr.model);
+    const name = (m && m.label) || tr.model || '';
+    return p && p.name ? (name ? name + ' (' + p.name + ')' : p.name) : name || 'AI';
   }
 
   let compareWith = null;  // another history item shown as a diff against the shown one
@@ -413,47 +463,85 @@
   let view = 'original';   // 'original' | 'translation' for the shown item
   let lastShown = null;
 
-  const hasTr = (it) => !!(it && it.translation && it.translation.text);
+  const hasTr = (it) => on('translate') && !!(curTr(it) && curTr(it).text);
   // Text the window currently shows (the translation when that view is on); Copy / Copy RTL use it.
-  const shownText = (it) => (view === 'translation' && hasTr(it) ? it.translation.text : it.text);
-  const translatable = (it) => it && it.text && it.fmt !== 'json' && /[A-Za-z֐-׿]{2}/.test(it.text) && !detectSmart(it);
+  const shownText = (it) => (view === 'translation' && hasTr(it) ? curTr(it).text : it.text);
+  const translatable = (it) => on('translate') && it && it.text && it.fmt !== 'json' && /[A-Za-z֐-׿]{2}/.test(it.text) && !detectSmart(it);
   const toEnglish = (t) => (t.match(/[֐-׿]/g) || []).length >= (t.match(/[A-Za-z]/g) || []).length;
+  const autoLabel = (it) => (toEnglish(it.text) ? t('tr.toEnglish') : t('tr.toHebrew'));
+  const canCompare = () => on('compare') && history.filter((h) => h.text).length > 1;
+
+  // The small "Translate to…" menu under the ▾ button.
+  function translateMenu(wrap, item) {
+    const old = wrap.querySelector('.tr-menu');
+    if (old) { old.remove(); return; }
+    const m = elt('div', 'tr-menu');
+    const title = elt('div', 'tm-title', t('tr.translateTo')); title.dir = I18N.dir; m.appendChild(title);
+    const add = (labelText, target, langCode) => {
+      const d = elt('div', 'mi' + (item.trKey === trKeyOf(target) && hasTr(item) ? ' cur' : ''), labelText);
+      d.dir = I18N.dir;   // the menu box follows the action bar; its rows follow the interface language
+      if (langCode) d.lang = langCode;
+      d.onclick = (e) => { e.stopPropagation(); m.remove(); requestTranslation(item, target); };
+      m.appendChild(d);
+    };
+    add(t('tr.auto'), '');
+    for (const code of targetList()) add(langName(code), code);
+    wrap.appendChild(m);
+  }
+  document.addEventListener('mousedown', (e) => {
+    if (!(e.target.closest && e.target.closest('.tr-split'))) document.querySelectorAll('.tr-menu').forEach((m) => m.remove());
+  });
 
   function actionBar(c, item) {
     const bar = elt('div', 'actions');
-    const tr = item.translation;
+    const tr = curTr(item);
+    const extras = [];
     if (translatable(item)) {
-      if (hasTr(item)) {
-        const b = elt('button', view === 'translation' ? 'on' : '', view === 'translation' ? t('tr.showOriginal') : t('tr.showTranslation'));
-        b.onclick = () => { view = view === 'translation' ? 'original' : 'translation'; render(); };
-        bar.appendChild(b);
-        if (view === 'translation') bar.appendChild(elt('span', 'note', (tr.from || '') + ' → ' + (tr.to || '') + ' · ' + t('tr.onDevice')));
-      } else if (tr && tr.pending) {
+      const split = elt('span', 'tr-split');
+      if (tr && tr.pending) {
         bar.appendChild(elt('span', 'note', t('tr.translating')));
       } else {
-        const b = elt('button', '', toEnglish(item.text) ? t('tr.toEnglish') : t('tr.toHebrew'));
-        b.onclick = () => requestTranslation(item);
-        bar.appendChild(b);
+        let main;
+        if (hasTr(item)) {
+          main = elt('button', view === 'translation' ? 'on' : '', view === 'translation' ? t('tr.showOriginal') : t('tr.showTranslation'));
+          main.onclick = () => { view = view === 'translation' ? 'original' : 'translation'; render(); };
+        } else {
+          main = elt('button', '', autoLabel(item));
+          main.onclick = () => requestTranslation(item, '');
+        }
+        const more = elt('button', 'tr-more', '▾');
+        more.title = t('tr.more.title'); more.setAttribute('aria-haspopup', 'menu');
+        more.onclick = (e) => { e.stopPropagation(); translateMenu(split, item); };
+        split.append(main, more);
+        bar.appendChild(split);
+        if (hasTr(item) && view === 'translation') {
+          const from = tr.from || '', to = tr.to || '';
+          bar.appendChild(elt('span', 'note tr-note', (from || to ? from + ' → ' + to + ' · ' : '') + engineLabel(tr)));
+          if (tr.fallback) extras.push(elt('span', 'tr-warn', tr.fallback.error ? t('tr.fallback', { error: tr.fallback.error }) : t('tr.fallbackNoError')));
+        }
       }
     }
-    if (item.text && history.filter((h) => h.text).length > 1) {
+    if (item.text && canCompare()) {
       const b = elt('button', picking ? 'on' : '', picking ? t('compare.picking') : t('compare.button'));
       b.title = t('compare.title');
       b.onclick = () => { picking = !picking; if (picking) document.body.classList.add('show-history'); render(); renderHistory(); };
       bar.appendChild(b);
     }
+    extras.forEach((x) => bar.appendChild(x));
     if (bar.children.length) c.appendChild(bar);
-    if (tr && tr.error) {
+    if (on('translate') && tr && tr.error) {
+      const target = item.trKey === 'auto' ? '' : item.trKey;
+      const retry = () => { const r = elt('button', '', t('tr.tryAgain')); r.onclick = () => requestTranslation(item, target, true); return r; };
       const n = elt('div', 'card warn');
       if (tr.error === 'notInstalled') {
         n.appendChild(elt('div', '', t('tr.err.notInstalled', { from: tr.from || '', to: tr.to || '' })));
         const row = elt('div', 'row-btns'); const o = elt('button', '', t('tr.openLanguages'));
-        o.onclick = () => native({ cmd: 'openTranslationSettings' }); const r = elt('button', '', t('tr.tryAgain'));
-        r.onclick = () => requestTranslation(item); row.append(o, r); n.appendChild(row);
+        o.onclick = () => native({ cmd: 'openTranslationSettings' }); row.append(o, retry()); n.appendChild(row);
       } else if (tr.error === 'unsupported') {
         n.appendChild(elt('div', '', t('tr.err.unsupported')));
       } else {
-        n.appendChild(elt('div', '', t('tr.err.failed', { error: tr.error })));
+        n.appendChild(elt('div', '', tr.engine === 'llm' ? t('tr.err.llm', { error: tr.error }) : t('tr.err.failed', { error: tr.error })));
+        const row = elt('div', 'row-btns'); row.append(retry()); n.appendChild(row);
       }
       c.appendChild(n);
     }
@@ -544,6 +632,7 @@
     $('#b-raw').classList.toggle('on', raw);
     $('#b-raw').disabled = !hasText;
     $('#b-copy').disabled = !hasText;
+    $('#b-rtl').hidden = !on('copyRtl');
     $('#b-rtl').disabled = !hasText || !HEB.test(shownText(item));
     $('#b-hold').classList.toggle('on', held);
     $('#b-hist').classList.toggle('on', document.body.classList.contains('show-history'));
@@ -584,7 +673,7 @@
       acts.append(bp, bd);
       d.append(tx, s, acts);
       d.onclick = () => {
-        if (picking) { picking = false; if (i !== shownIndex && it.text) compareWith = it; render(); renderHistory(); return; }
+        if (picking && on('compare')) { picking = false; if (i !== shownIndex && it.text) compareWith = it; render(); renderHistory(); return; }
         shownIndex = i; render(); renderHistory();
       };
       h.appendChild(d);
@@ -615,7 +704,7 @@
   }
   function exportHistory() {
     return history.filter((it) => it.fmt !== 'secret' && !(it.image && it.image.length > MAX_SAVED_IMAGE))
-      .map(({ fmt, self, translation, ...rest }) => rest);
+      .map(({ fmt, self, translation, translations, trKey, ...rest }) => rest);
   }
 
   // ---- settings that affect rendering (the Settings UI itself is settings.js) -------------------------
@@ -629,6 +718,8 @@
       Object.keys(S).filter((k) => k.startsWith('f.')).map((k) => S[k]).join(',')].join('|');
     if (sig !== renderedWith) {
       renderedWith = sig;
+      if (!on('compare')) { picking = false; compareWith = null; }
+      if (!on('translate')) view = 'original';
       history.forEach((it) => { it.fmt = classify(it); });
       render(); renderHistory();
     }
@@ -663,20 +754,21 @@
     const sel = inContent ? String(window.getSelection() || '') : '';
     return [
       sel && { label: t('menu.copySelection'), run: () => copyText(sel) },
-      sel && HEB.test(sel) && { label: t('menu.copySelectionRtl'), run: () => copyText(sel, true) },
+      sel && on('copyRtl') && HEB.test(sel) && { label: t('menu.copySelectionRtl'), run: () => copyText(sel, true) },
       sel && '-',
       it.text && { label: t('menu.copy'), run: () => copyText(inContent ? shownText(it) : it.text) },
-      it.text && HEB.test(inContent ? shownText(it) : it.text) && { label: t('menu.copyRtl'), key: inContent ? '⇧⌘C' : '', run: () => copyText(inContent ? shownText(it) : it.text, true) },
+      it.text && on('copyRtl') && HEB.test(inContent ? shownText(it) : it.text) && { label: t('menu.copyRtl'), key: inContent ? '⇧⌘C' : '', run: () => copyText(inContent ? shownText(it) : it.text, true) },
       it.text && '-',
       { label: it.pinned ? t('menu.unpin') : t('menu.pin'), run: () => op(it.pinned ? 'unpin' : 'pin', it) },
       { label: t('menu.openInWindow'), run: () => native({ cmd: 'openItem', id: keyOf(it) }) },
       inContent ? { label: held ? t('menu.follow') : t('menu.hold'), key: '⌘L', run: () => window.monitor.toggleHold() }
                 : { label: t('menu.show'), run: () => { shownIndex = i; render(); renderHistory(); } },
       inContent && it.text && { label: raw ? t('menu.showRendered') : t('menu.showRaw'), key: '⌘R', run: () => window.monitor.toggleRaw() },
-      inContent && translatable(it) && !hasTr(it) && { label: toEnglish(it.text) ? t('tr.toEnglish') : t('tr.toHebrew'), run: () => requestTranslation(it) },
       inContent && hasTr(it) && { label: view === 'translation' ? t('tr.showOriginal') : t('tr.showTranslation'), run: () => { view = view === 'translation' ? 'original' : 'translation'; render(); } },
-      !inContent && it.text && i !== shownIndex && history[shownIndex] && history[shownIndex].text && { label: t('menu.compareWithShown'), run: () => { compareWith = it; picking = false; render(); renderHistory(); } },
-      inContent && compareWith && { label: t('menu.closeCompare'), run: () => { compareWith = null; render(); renderHistory(); } },
+      inContent && translatable(it) && !(hasTr(it) && it.trKey === 'auto') && { label: autoLabel(it), run: () => requestTranslation(it, '') },
+      ...(inContent && translatable(it) ? menuTargets(it).map((code) => ({ label: t('tr.translateToLang', { lang: langName(code) }), run: () => requestTranslation(it, code) })) : []),
+      !inContent && on('compare') && it.text && i !== shownIndex && history[shownIndex] && history[shownIndex].text && { label: t('menu.compareWithShown'), run: () => { compareWith = it; picking = false; render(); renderHistory(); } },
+      inContent && compareWith && on('compare') && { label: t('menu.closeCompare'), run: () => { compareWith = null; render(); renderHistory(); } },
       '-',
       { label: t('menu.delete'), danger: true, run: () => op('delete', it) },
     ];
@@ -796,11 +888,24 @@
       shownIndex = i; held = true; render(); renderHistory();
     },
     translated(r) {
-      const it = history.find((h) => h.translation && h.translation.req === r.req);
+      let it = null, key = null;
+      for (const h of history) {
+        for (const [k, v] of Object.entries(h.translations || {})) if (v && v.req === r.req) { it = h; key = k; }
+        if (it) break;
+      }
       if (!it) return;
-      it.translation = r.error ? { error: r.error, from: r.from, to: r.to } : { text: r.text, from: r.from, to: r.to };
-      if (it === history[shownIndex] && !r.error) view = 'translation';
-      if (it === history[shownIndex]) render();
+      const sig = it.translations[key].sig;
+      const base = { from: r.from, to: r.to, engine: r.engine || 'apple', model: r.model || '', provider: r.provider || '', sig };
+      if (r.error) it.translations[key] = Object.assign(base, { error: r.error });
+      else {
+        // fallbackFrom: the AI engine failed and Apple translated instead. It may be a string ('llm') with the
+        // reason in fallbackError, or an object {engine, model, error}.
+        const fb = r.fallbackFrom ? { error: (typeof r.fallbackFrom === 'object' && r.fallbackFrom.error) || r.fallbackError || '' } : null;
+        it.translations[key] = Object.assign(base, { text: r.text, fallback: fb });
+      }
+      const shown = it === history[shownIndex] && it.trKey === key;
+      if (shown && !r.error) view = 'translation';
+      if (shown) render();
       CM.emit('translated', r);
     },
     previewed(p) {
