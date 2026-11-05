@@ -79,12 +79,11 @@
 #settings .ai-hidtoggle { margin-top: 6px; padding: 3px 4px; color: var(--muted); font-size: 12px; }
 #settings .ai-hidtoggle:hover { color: var(--fg); }
 
-/* Switches in this tab place the knob with logical insets so they mirror in RTL; .sm is the model-row size. */
-#settings .ai-tab .switch::after { left: auto; right: auto; inset-inline-start: 2px; transition: inset-inline-start .15s; }
-#settings .ai-tab .switch:checked::after { left: auto; right: auto; inset-inline-start: 16px; }
+/* Full-size switches use the shared app.css rule (it mirrors in RTL); .sm is the smaller model-row size. */
 #settings .ai-tab .switch.sm { width: 24px; height: 14px; border-radius: 7px; }
 #settings .ai-tab .switch.sm::after { width: 10px; height: 10px; top: 2px; }
-#settings .ai-tab .switch.sm:checked::after { inset-inline-start: 12px; }
+#settings .ai-tab .switch.sm:checked::after { transform: translateX(10px); }
+html[dir="rtl"] #settings .ai-tab .switch.sm:checked::after { transform: translateX(-10px); }
 
 /* Add / edit form */
 #settings .ai-form { border: 1px solid var(--accent); border-radius: 9px; padding: 10px 12px; margin: 8px 0; background: var(--bg); }

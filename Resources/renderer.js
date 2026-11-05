@@ -291,6 +291,7 @@
   }
 
   // JSON tree with collapsible nodes
+  // JSON trees are code: always left to right, even in a Hebrew UI (the depth-0 node carries the jtree class).
   function jsonView(v, depth = 0) {
     if (v === null || typeof v !== 'object') {
       const s = elt('span', 'j-' + (v === null ? 'null' : typeof v), typeof v === 'string' ? JSON.stringify(v) : String(v));
@@ -298,6 +299,7 @@
     }
     const isArr = Array.isArray(v), keys = Object.keys(v);
     const d = elt('details', 'jnode'); if (depth < 2) d.open = true;
+    if (depth === 0) d.setAttribute('dir', 'ltr');
     const sum = elt('summary', '', isArr ? `[ ${keys.length} ]` : `{ ${keys.length} }`); d.appendChild(sum);
     for (const k of keys) {
       const row = elt('div', 'jrow');

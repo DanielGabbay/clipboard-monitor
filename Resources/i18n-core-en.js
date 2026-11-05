@@ -88,7 +88,7 @@ I18N.register({ en: {
   'settings.general.onTop': 'Always on top', 'settings.general.allSpaces': 'Show on all desktops',
   'settings.general.newMonitor': 'New monitor',
   'settings.general.newMonitor.hint': 'Each window or tab follows the clipboard on its own; use Hold to keep one on a single item.',
-  'settings.general.newWindow': 'New window ⌘N', 'settings.general.newTab': 'New tab ⌘T',
+  'settings.general.newWindow': 'New window', 'settings.general.newTab': 'New tab',
   'settings.general.startup': 'Startup & shortcut',
   'settings.general.loginItem': 'Launch at login',
   'settings.general.hotkey': 'Show / hide shortcut', 'settings.general.hotkey.hint': 'Works from any app.', 'settings.general.hotkey.off': 'Off',

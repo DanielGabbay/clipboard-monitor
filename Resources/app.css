@@ -216,3 +216,6 @@ html[dir="rtl"] .kv th { padding: 2px 0 2px 12px; }
 .jq:placeholder-shown { direction: inherit; text-align: start; }
 /* Hebrew has no capitals; letter-spaced small labels read badly in it. */
 html[lang="he"] :is(#settings h3, .card-title, #history .sec) { letter-spacing: 0; text-transform: none; font-size: 11.5px; }
+
+/* Shortcut hints inside buttons keep their glyph order in RTL (dir=ltr on the kbd). */
+#settings button kbd { font: inherit; color: var(--muted); }

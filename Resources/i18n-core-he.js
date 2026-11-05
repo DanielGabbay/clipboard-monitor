@@ -88,7 +88,7 @@ I18N.register({ he: {
   'settings.general.onTop': 'תמיד למעלה', 'settings.general.allSpaces': 'הצג בכל שולחנות העבודה',
   'settings.general.newMonitor': 'חלון ניטור חדש',
   'settings.general.newMonitor.hint': 'כל חלון או כרטיסייה עוקבים אחרי הלוח בנפרד; השתמש ב"החזק" כדי להשאיר אחד על פריט מסוים.',
-  'settings.general.newWindow': 'חלון חדש ⌘N', 'settings.general.newTab': 'כרטיסייה חדשה ⌘T',
+  'settings.general.newWindow': 'חלון חדש', 'settings.general.newTab': 'כרטיסייה חדשה',
   'settings.general.startup': 'הפעלה וקיצור מקלדת',
   'settings.general.loginItem': 'פתח בעת התחברות',
   'settings.general.hotkey': 'קיצור להצגה / הסתרה', 'settings.general.hotkey.hint': 'פועל מכל יישום.', 'settings.general.hotkey.off': 'כבוי',
