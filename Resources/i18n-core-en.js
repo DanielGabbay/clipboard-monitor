@@ -6,7 +6,7 @@ I18N.register({ en: {
   'header.raw': 'Raw', 'header.raw.title': 'Raw / rendered (⌘R)',
   'header.copy': 'Copy', 'header.copy.title': 'Copy shown item back to the clipboard',
   'header.copyRtl': 'Copy RTL', 'header.copyRtl.title': 'Copy with Hebrew lines wrapped in RLI…PDI, for pasting into apps without RTL support (⇧⌘C)',
-  'header.hold': 'Hold', 'header.hold.title': 'Hold this item: this window stops following the clipboard (⌘L)',
+  'header.hold': 'Hold', 'header.hold.title': 'Keep showing this item; stop following the clipboard (⌘L)',
   'header.history.title': 'History (⌘Y)',
   'header.theme.title': 'Appearance: System / Light / Dark',
   'header.settings.title': 'Settings (⌘,)',
@@ -19,7 +19,7 @@ I18N.register({ en: {
   'empty.copy': 'Copy something…',
   'content.image': 'Image {size}',
   'content.imageHidden': 'Image {size} (hidden in Settings)',
-  'content.secret': 'Hidden: the copying app marked this as a password/secret.',
+  'content.secret': 'Hidden: the app you copied from marked this as a password or secret.',
   'content.other': 'Non-text content ({types})',
   'content.unknown': 'unknown',
   'fmt.markdown': 'Markdown', 'fmt.rich': 'Rich text', 'fmt.text': 'Text', 'fmt.json': 'JSON',
@@ -28,7 +28,7 @@ I18N.register({ en: {
   // history
   'history.search': 'Search history…',
   'history.pinned': 'Pinned', 'history.recent': 'Recent',
-  'history.noMatches': 'No matches', 'history.empty': 'Empty',
+  'history.noMatches': 'No matches', 'history.empty': 'History is empty',
   'history.hidden': 'Hidden',
 
   // smart cards
@@ -40,7 +40,7 @@ I18N.register({ en: {
   'smart.link.loading': 'Loading…', 'smart.link.previewFailed': 'Preview failed: {error}',
   'smart.color': 'Color',
   'smart.time': 'Date & time', 'smart.time.unixS': 'Unix (s)', 'smart.time.unixMs': 'Unix (ms)',
-  'smart.json': 'JSON', 'smart.json.syntax': 'Use .key, [0] or [] (e.g. .items[].name)',
+  'smart.json': 'JSON', 'smart.json.syntax': 'Use .key, [0] or [] (for example .items[].name)',
   'smart.json.filter': 'Filter: .key, [0], .items[].name', 'smart.json.copyMin': 'Copy minified',
   'smart.json.copyResult': 'Copy result', 'smart.json.noMatch': 'No match',
   'smart.base64': 'Base64', 'smart.base64.decoded': 'Decoded', 'smart.base64.copy': 'Copy decoded',
@@ -73,11 +73,11 @@ I18N.register({ en: {
   // settings shell
   'settings.title': 'Settings', 'settings.done': 'Done', 'settings.done.title': 'Close (Esc)',
   'settings.tab.general': 'General', 'settings.tab.content': 'Content', 'settings.tab.history': 'History',
-  'settings.tab.features': 'Features', 'settings.tab.ai': 'AI', 'settings.tab.about': 'About',
+  'settings.tab.features': 'Features', 'settings.tab.translate': 'Translation', 'settings.tab.ai': 'AI', 'settings.tab.about': 'About',
 
   // General tab
   'settings.general.language': 'Language',
-  'settings.general.uiLang': 'Interface language', 'settings.general.uiLang.hint': 'System follows the macOS language.',
+  'settings.general.uiLang': 'Interface language', 'settings.general.uiLang.hint': '“System” uses the macOS language.',
   'settings.general.uiLang.system': 'System',
   'settings.general.appearance': 'Appearance',
   'settings.general.theme': 'Theme', 'settings.general.theme.system': 'System', 'settings.general.theme.light': 'Light', 'settings.general.theme.dark': 'Dark',
@@ -86,7 +86,7 @@ I18N.register({ en: {
   'settings.general.zoom': 'Text size',
   'settings.general.window': 'Window',
   'settings.general.onTop': 'Always on top', 'settings.general.allSpaces': 'Show on all desktops',
-  'settings.general.newMonitor': 'New monitor',
+  'settings.general.newMonitor': 'Another window',
   'settings.general.newMonitor.hint': 'Each window or tab follows the clipboard on its own; use Hold to keep one on a single item.',
   'settings.general.newWindow': 'New window', 'settings.general.newTab': 'New tab',
   'settings.general.startup': 'Startup & shortcut',
@@ -98,10 +98,10 @@ I18N.register({ en: {
   'settings.content.markdown': 'Render Markdown', 'settings.content.rich': 'Render rich text from web pages',
   'settings.content.highlight': 'Syntax highlighting in code', 'settings.content.images': 'Show copied images',
   'settings.content.bidi': 'Direction (BiDi)',
-  'settings.content.detect': 'Detection',
+  'settings.content.detect': 'Direction detection',
   'settings.content.detect.hint': "Majority: a line is RTL when enough of its letters are Hebrew. First letter: the browser's own dir=auto rule.",
   'settings.content.detect.majority': 'Majority', 'settings.content.detect.first': 'First letter',
-  'settings.content.ratio': 'Hebrew share for RTL', 'settings.content.ratio.value': '{pct}% of the letters',
+  'settings.content.ratio': 'Hebrew threshold for RTL', 'settings.content.ratio.value': '{pct}% of the letters',
 
   // History tab
   'settings.history.title': 'History & privacy',
@@ -109,6 +109,6 @@ I18N.register({ en: {
   'settings.history.keep.hint': 'Saved only on this Mac. Password-manager items are never shown or saved.',
   'settings.history.size': 'History size',
   'settings.history.ignored': 'Ignore copies from these apps',
-  'settings.history.ignored.hint': 'App names or bundle IDs, comma separated (e.g. 1Password, Keychain Access).',
-  'settings.history.clear': 'Clear history in all windows', 'settings.history.clear.button': 'Clear',
+  'settings.history.ignored.hint': 'App names or bundle IDs, separated by commas (for example 1Password, Keychain Access).',
+  'settings.history.clear': 'Clear history in all windows (pinned items stay)', 'settings.history.clear.button': 'Clear',
 } });
