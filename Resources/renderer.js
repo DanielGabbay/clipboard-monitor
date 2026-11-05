@@ -34,7 +34,7 @@
     // Only the clipboard view: Settings and other chrome follow the UI direction instead of per-block detection.
     blocks: ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'td', 'th', 'dd', 'dt', 'figcaption', '.line', '.decoded',
              '.rich div:not(:has(div, p, ul, ol, table, pre, h1, h2, h3, h4, blockquote))'].map((s) => '#content ' + s).join(', '),
-    editors: '#search, #settings textarea, #settings input[type=text]', detect: 'majority', ratio: 0.3, align: true,
+    editors: '#search, #settings textarea:not([dir]), #settings input[type=text]:not([dir])', detect: 'majority', ratio: 0.3, align: true,
     forceLtr: 'pre, kbd, samp', isolateInline: 'a, code, kbd, strong, em, b, i',
   };
   const detectDir = (t) => window.__bidiFix.detectDir(t, BIDI);
@@ -1069,7 +1069,8 @@
         // reason in fallbackError, or an object {engine, model, error}.
         const fb = r.fallbackFrom ? { error: typeof r.fallbackFrom === 'object' ? (r.fallbackFrom.error || '')
           : (r.fallbackError || (r.fallbackFrom !== 'llm' ? r.fallbackFrom : '')) } : null;
-        it.translations[key] = Object.assign(base, { text: r.text, fallback: fb });
+        // A fallback result was made on-device: cache it as such so the next request tries the AI model again.
+        it.translations[key] = Object.assign(base, { text: r.text, fallback: fb }, fb ? { sig: 'apple' } : {});
       }
       const shown = it === history[shownIndex] && it.trKey === key;
       if (shown && !r.error) view = 'translation';

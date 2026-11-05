@@ -623,6 +623,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         win.addItem(.separator())
         winItem.submenu = win
         NSApp.windowsMenu = win
+        // A rebuilt Window menu (language change) does not list the windows that are already open; add them back.
+        controllers.forEach { NSApp.addWindowsItem($0.window, title: $0.window.title, filename: false) }
 
         NSApp.mainMenu = main
     }

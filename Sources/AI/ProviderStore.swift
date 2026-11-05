@@ -112,7 +112,11 @@ enum ProviderStore {
     static func load(from url: URL = url) -> [AIProvider] {
         guard let data = try? Data(contentsOf: url) else { return [] }
         do { return try JSONDecoder().decode([AIProvider].self, from: data) } catch {
-            NSLog("Clipboard Monitor: could not read ai-providers.json: \(error.localizedDescription)")
+            // Keep the unreadable file aside so the next save cannot silently erase the user's providers.
+            let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+            let backup = url.deletingLastPathComponent().appendingPathComponent("ai-providers.unreadable-\(stamp).json")
+            try? FileManager.default.moveItem(at: url, to: backup)
+            NSLog("Clipboard Monitor: could not read ai-providers.json (\(error.localizedDescription)); kept it as \(backup.lastPathComponent)")
             return []
         }
     }

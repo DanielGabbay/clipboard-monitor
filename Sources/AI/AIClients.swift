@@ -175,8 +175,11 @@ enum AnthropicClient {
         var out: [RemoteModel] = []
         var after: String?
         for _ in 0..<20 {   // pages of 1000; the cap only guards against a server that never stops
-            var url = root + "/models?limit=1000"
-            if let after, let enc = after.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) { url += "&after_id=" + enc }
+            guard var comps = URLComponents(string: root + "/models") else { throw AIError("Invalid base URL") }
+            comps.queryItems = [URLQueryItem(name: "limit", value: "1000")] + (after.map { [URLQueryItem(name: "after_id", value: $0)] } ?? [])
+            // URLComponents leaves "+" alone in queries; encode it so an id containing "+" survives.
+            comps.percentEncodedQuery = comps.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+            guard let url = comps.string else { throw AIError("Invalid base URL") }
             let obj = try await AIHTTP.json(try AIHTTP.request(url, headers: headers(key), timeout: timeout), key: key)
             guard let d = obj as? [String: Any] else { throw AIError("Invalid response from the server") }
             let data = d["data"] as? [[String: Any]] ?? []

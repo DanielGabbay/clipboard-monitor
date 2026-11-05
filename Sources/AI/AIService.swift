@@ -18,7 +18,8 @@ final class AIService {
         providers = ProviderStore.load()
         // A hint whose Keychain item is gone (deleted by hand in Keychain Access) would claim a key we do not have.
         var changed = false
-        for i in providers.indices where providers[i].hasKey && !AIKeychain.exists(account: providers[i].id) {
+        // Only a definite "not found" clears it: other Keychain errors (an ACL mismatch after a rebuild) keep the hint.
+        for i in providers.indices where providers[i].hasKey && AIKeychain.isMissing(account: providers[i].id) {
             providers[i].keyHint = ""; changed = true
         }
         if changed { ProviderStore.save(providers) }
@@ -48,9 +49,17 @@ final class AIService {
         return providers.firstIndex { $0.id == id }
     }
 
+    /// Saves and broadcasts once per run-loop turn, so a burst of changes ("Test all visible" on many models)
+    /// writes the file and re-renders the windows once instead of once per change.
+    private var commitPending = false
     private func commit() {
-        ProviderStore.save(providers)
-        broadcastState()
+        guard !commitPending else { return }
+        commitPending = true
+        DispatchQueue.main.async { [self] in
+            commitPending = false
+            ProviderStore.save(providers)
+            broadcastState()
+        }
     }
 
     private static func now() -> Double { (Date().timeIntervalSince1970 * 1000).rounded() }
@@ -121,6 +130,14 @@ final class AIService {
             p.baseURL = u.isEmpty ? preset.baseURL : u
         }
         if let v = pd["enabled"] as? Bool { p.enabled = v }
+        // A stored key only ever goes to the endpoint it was entered for: moving a provider to another URL or kind
+        // without supplying a key again drops the old key.
+        let newKeyGiven = !(((body["apiKey"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        if let i = existing, providers[i].hasKey, !newKeyGiven,
+           providers[i].baseURL != p.baseURL || providers[i].kind != p.kind {
+            AIKeychain.delete(account: p.id)
+            p.keyHint = ""
+        }
         if let v = pd["autoRefresh"] as? Bool { p.autoRefresh = v }
 
         if body["apiKey"] is NSNull {
