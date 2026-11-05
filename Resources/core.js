@@ -8,7 +8,8 @@
 //                                'versionInfo' (info), 'translated' (result)
 //   CM.ai                        last AI state from the app: {providers, presets}
 //   CM.toast(msg)
-//   CM.registerTab(id, {mount(panelEl), update?(S)})   fill one Settings tab (features, ai, about, ...)
+//   CM.registerTab(id, {mount(panelEl), update?(S)})   fill one Settings tab (features, translate, ai, about, ...)
+//   CM.menuKeys(menuEl, {onClose, onKey?, focusFirst?})  arrow-key / Enter / Escape handling for a popup menu
 (function () {
   'use strict';
   const listeners = {};
@@ -38,6 +39,41 @@
     },
     tabs: {},
     registerTab(id, def) { CM.tabs[id] = def; CM.emit('tabRegistered', id); },
+    /**
+     * Keyboard for a popup menu: ArrowUp/Down (wrapping), Home/End, Enter/Space (click the item), Escape (onClose).
+     * Items are the [role=menuitem] descendants of container that are not hidden or aria-disabled; they get
+     * tabindex=-1. Focuses the first item unless opts.focusFirst === false. opts.onKey(e, item) runs first and may
+     * return true to say it handled the key (submenus). Returns {focusFirst(), destroy()}. Additive helper:
+     * modules can use it when present, e.g. `if (CM.menuKeys) CM.menuKeys(menuEl, { onClose })`.
+     */
+    menuKeys(container, opts = {}) {
+      const items = () => [...container.querySelectorAll('[role="menuitem"]')]
+        .filter((el) => !el.hidden && el.getAttribute('aria-disabled') !== 'true');
+      const focusAt = (i) => {
+        const list = items(); if (!list.length) return;
+        const el = list[((i % list.length) + list.length) % list.length];
+        if (!el.hasAttribute('tabindex')) el.tabIndex = -1;
+        el.focus();
+      };
+      function onKey(e) {
+        const list = items(), i = list.indexOf(document.activeElement);
+        if (opts.onKey && opts.onKey(e, list[i]) === true) { e.preventDefault(); e.stopPropagation(); return; }
+        switch (e.key) {
+          case 'ArrowDown': focusAt(i + 1); break;
+          case 'ArrowUp': focusAt(i < 0 ? -1 : i - 1); break;
+          case 'Home': focusAt(0); break;
+          case 'End': focusAt(-1); break;
+          case 'Enter': case ' ': if (i < 0) return; list[i].click(); break;
+          case 'Escape': if (opts.onClose) opts.onClose(); break;
+          default: return;
+        }
+        e.preventDefault(); e.stopPropagation();
+      }
+      items().forEach((el) => { if (!el.hasAttribute('tabindex')) el.tabIndex = -1; });
+      container.addEventListener('keydown', onKey);
+      if (opts.focusFirst !== false) focusAt(0);
+      return { focusFirst: () => focusAt(0), destroy: () => container.removeEventListener('keydown', onKey) };
+    },
   };
   window.CM = CM;
 })();
