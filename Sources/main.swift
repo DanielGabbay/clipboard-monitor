@@ -430,7 +430,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func broadcastSettings() {
         let s = settingsForPage()
         controllers.forEach { $0.call("monitor.setSettings", s) }
-        LensController.shared?.settingsChanged()
+        // AppKit calls this on the main thread; the lens is main-actor isolated.
+        MainActor.assumeIsolated { LensController.shared?.settingsChanged() }
     }
 
     func setSetting(_ key: String, _ value: Any) {
@@ -551,7 +552,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func copyRtl(_ sender: Any?) { current?.js("window.monitor.copyRtl()") }
     @objc func snapRight(_ sender: Any?) { current?.placeOnRightEdge() }
     @objc func showAll(_ sender: Any?) { toggleVisible() }
-    @objc func toggleLens(_ sender: Any?) { LensController.toggle() }
+    @objc func toggleLens(_ sender: Any?) { MainActor.assumeIsolated { LensController.toggle() } }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {

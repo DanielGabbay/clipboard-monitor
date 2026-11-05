@@ -264,7 +264,9 @@ enum AXTextReader {
         init(_ e: AXUIElement) {
             var raw: CFArray?
             guard AXUIElementCopyMultipleAttributeValues(e, Self.names, AXCopyMultipleAttributeOptions(rawValue: 0), &raw) == .success,
-                  let raw, let v = (raw as NSArray) as? [AnyObject], v.count == 8 else { return }
+                  let raw else { return }
+            let v = (raw as NSArray) as [AnyObject]
+            guard v.count == 8 else { return }
             role = v[0] as? String ?? ""
             subrole = v[1] as? String
             if let f = AXTextReader.cgRect(v[2]) { frame = f }
