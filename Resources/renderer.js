@@ -958,6 +958,8 @@
       // Our own Copy / Copy RTL: the user already sees this content, don't add a near-duplicate.
       if (item.self) return;
       item = Object.assign({}, item);
+      // "Open in Clipboard Monitor" from the Translate at Pointer card: translate right away to the same target.
+      const translateTo = item.translateTo; delete item.translateTo;
       item.time = item.time || Date.now();
       item.fmt = classify(item);
       const same = (a) => a && a.fmt === item.fmt && (item.text ? a.text === item.text : item.image ? a.image === item.image : false);
@@ -981,6 +983,7 @@
         render(); renderHistory();
       }
       save();
+      if (translateTo != null && translatable(item)) requestTranslation(item, translateTo);
     },
     loadHistory(items) {
       if (!Array.isArray(items)) return;

@@ -144,3 +144,140 @@ enum AppleTranslator {
         }
     }
 }
+
+// MARK: - Line translation (Translation Lens)
+//
+// Translates many short screen lines at once and keeps them apart: the lens shows each translation on top of its
+// own line. Uses the same engine settings as the clipboard translation (LLM with optional Apple fallback, or
+// Apple). An empty target means Hebrew <-> English per line.
+
+enum LineResult: Sendable, Equatable {
+    case text(String)
+    case same               // already in the target language: leave the original visible
+    case failed(String)     // error message or code ("unsupported", "notInstalled")
+}
+
+@MainActor
+enum LineTranslator {
+    static let chunkSize = 40
+
+    static func translate(_ lines: [String], target: String) async -> [LineResult] {
+        var results = [LineResult](repeating: .failed(""), count: lines.count)
+        var pending: [(index: Int, text: String, from: String, to: String)] = []
+        for (i, line) in lines.enumerated() {
+            let (detected, to) = TranslationRouter.languages(line, target: target.isEmpty ? nil : target)
+            var from = detected
+            // A Hebrew or Arabic line full of English names and file paths can be detected as English; the
+            // script decides then.
+            if primary(from) == primary(to), let script = rtlScript(line), primary(to) != script { from = script }
+            if primary(from) == primary(to) { results[i] = .same } else { pending.append((i, line, from, to)) }
+        }
+        guard !pending.isEmpty else { return results }
+
+        let useLLM = Settings.string("translateEngine") == "llm" && Settings.bool("f.ai")
+        guard useLLM else {
+            for (i, r) in await apple(pending) { results[i] = r }
+            return results
+        }
+        let providerId = Settings.string("translateProvider"), model = Settings.string("translateModel")
+        let fallback = Settings.bool("translateFallbackApple")
+        var why: String?
+        if let p = AIService.shared.provider(providerId) {
+            if !p.enabled { why = "AI provider \"\(p.name)\" is turned off" }
+            else if model.isEmpty { why = "No AI model chosen for translation" }
+        } else {
+            why = "No AI provider chosen for translation"
+        }
+        var appleItems: [(index: Int, text: String, from: String, to: String)] = []
+        if let why {
+            if fallback { appleItems = pending } else { pending.forEach { results[$0.index] = .failed(why) } }
+        } else {
+            let byTarget = Dictionary(grouping: pending, by: { $0.to })
+            for (to, items) in byTarget {
+                for start in stride(from: 0, to: items.count, by: chunkSize) {
+                    let chunk = Array(items[start..<min(start + chunkSize, items.count)])
+                    do {
+                        let out = try await llm(chunk.map { $0.text }, to: to, providerId: providerId, model: model)
+                        for (k, item) in chunk.enumerated() { results[item.index] = .text(out[k]) }
+                    } catch {
+                        if fallback { appleItems += chunk } else { chunk.forEach { results[$0.index] = .failed(error.localizedDescription) } }
+                    }
+                }
+            }
+        }
+        if !appleItems.isEmpty { for (i, r) in await apple(appleItems) { results[i] = r } }
+        return results
+    }
+
+    /// "he" or "ar" when at least 30% of the letters are Hebrew or Arabic, else nil.
+    private static func rtlScript(_ s: String) -> String? {
+        var hebrew = 0, arabic = 0, other = 0
+        for u in s.unicodeScalars where CharacterSet.letters.contains(u) {
+            if (0x0590...0x05FF).contains(u.value) || (0xFB1D...0xFB4F).contains(u.value) { hebrew += 1 }
+            else if (0x0600...0x08FF).contains(u.value) || (0xFB50...0xFEFF).contains(u.value) { arabic += 1 }
+            else { other += 1 }
+        }
+        let total = hebrew + arabic + other
+        guard total > 0, Double(hebrew + arabic) / Double(total) >= 0.3 else { return nil }
+        return hebrew >= arabic ? "he" : "ar"
+    }
+
+    /// "he-IL" -> "he", "zh-Hans" -> "zh".
+    private static func primary(_ code: String) -> String {
+        String(code.lowercased().split(whereSeparator: { $0 == "-" || $0 == "_" }).first ?? "")
+    }
+
+    static func prompt(to: String, count: Int) -> String {
+        """
+        You are a translation engine. The user sends a JSON array of \(count) strings: lines of text read from a \
+        screen, in order. Translate each string into \(TranslationRouter.languageName(to)) on its own.
+        Keep the order and the count: never merge, split, drop or add strings. A line may be cut mid-sentence; \
+        translate what is there.
+        Keep code, URLs, e-mail addresses, file paths, numbers and product names unchanged. A string that is \
+        already in the target language stays as it is.
+        Reply with only a JSON array of exactly \(count) strings: no Markdown fences, no notes.
+        """
+    }
+
+    static func llm(_ texts: [String], to: String, providerId: String, model: String) async throws -> [String] {
+        let json = String(decoding: try JSONSerialization.data(withJSONObject: texts), as: UTF8.self)
+        let out = try await AIService.shared.chat(providerId: providerId, model: model, system: prompt(to: to, count: texts.count),
+                                                  user: json, maxTokens: nil, timeout: AITimeout.translate)
+        guard let start = out.firstIndex(of: "["), let end = out.lastIndex(of: "]"), start < end,
+              let arr = try? JSONSerialization.jsonObject(with: Data(out[start...end].utf8)) as? [Any],
+              arr.count == texts.count else {
+            throw AIError("The model did not return \(texts.count) lines")
+        }
+        return arr.map { ($0 as? String) ?? "\($0)" }
+    }
+
+    /// On-device translation (macOS 26+), one session per language pair.
+    static func apple(_ items: [(index: Int, text: String, from: String, to: String)]) async -> [Int: LineResult] {
+        var out: [Int: LineResult] = [:]
+        guard #available(macOS 26.0, *) else {
+            items.forEach { out[$0.index] = .failed("unsupported") }
+            return out
+        }
+        let byPair = Dictionary(grouping: items, by: { $0.from + ">" + $0.to })
+        for group in byPair.values {
+            guard let first = group.first else { continue }
+            let source = Locale.Language(identifier: first.from), target = Locale.Language(identifier: first.to)
+            let status = await LanguageAvailability().status(from: source, to: target)
+            guard status == .installed else {
+                let code = status == .supported ? "notInstalled" : "unsupported"
+                group.forEach { out[$0.index] = .failed(code) }
+                continue
+            }
+            do {
+                let session = TranslationSession(installedSource: source, target: target)
+                let requests = group.map { TranslationSession.Request(sourceText: $0.text, clientIdentifier: String($0.index)) }
+                for r in try await session.translations(from: requests) {
+                    if let id = r.clientIdentifier, let i = Int(id) { out[i] = .text(r.targetText) }
+                }
+            } catch {
+                group.forEach { out[$0.index] = .failed(error.localizedDescription) }
+            }
+        }
+        return out
+    }
+}

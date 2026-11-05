@@ -41,6 +41,8 @@ enum Loc {
         "menu.view.zoomOut": "Zoom Out",
         "menu.view.actualSize": "Actual Size",
         "menu.view.snapRight": "Snap to Right Edge",
+        "menu.view.lens": "Translation Lens",
+        "menu.view.bubble": "Translate at Pointer",
         "menu.window": "Window",
         "menu.window.showHide": "Show / Hide Monitors",
         "menu.window.minimize": "Minimize",

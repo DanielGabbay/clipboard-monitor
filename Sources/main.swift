@@ -1,7 +1,7 @@
 // Clipboard Monitor: small always-visible windows that show the clipboard with correct Hebrew/English (BiDi)
 // rendering, and render Markdown / rich text / code. AppKit shell + one WKWebView per window (or tab).
 // Rendering and the settings panel live in Resources/ (index.html + *.js); Resources/bidi-fix.js is the BiDi engine.
-// Other Swift files: Settings, Localization, Translation, AI/*, Version.
+// Other Swift files: Settings, Localization, Translation, AI/*, Lens/* (Translation Lens), Version.
 import Cocoa
 import WebKit
 import Carbon
@@ -202,6 +202,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var paused = false
     var selfWrittenChange = -1
     var hotKeyRef: EventHotKeyRef?
+    var lensHotKeyRef: EventHotKeyRef?
+    var bubbleHotKeyRef: EventHotKeyRef?
     var hotKeyHandlerInstalled = false
 
     // Pasteboard types that password managers and similar apps use to mark secrets / throwaway data
@@ -429,6 +431,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func broadcastSettings() {
         let s = settingsForPage()
         controllers.forEach { $0.call("monitor.setSettings", s) }
+        // AppKit calls this on the main thread; the lens is main-actor isolated.
+        MainActor.assumeIsolated { LensController.shared?.settingsChanged() }
     }
 
     func setSetting(_ key: String, _ value: Any) {
@@ -442,7 +446,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case "onTop", "allSpaces": controllers.forEach { $0.applyWindowPrefs() }
         case "theme": applyTheme()
         case "zoom": controllers.forEach { $0.web.pageZoom = Settings.double("zoom"); $0.sendInsets() }
-        case "hotkey": registerHotKey()
+        case "hotkey", "lensHotkey", "bubbleHotkey": registerHotKey()
         case "uiLang": buildMenu()
         case "keepHistory":
             if Settings.bool("keepHistory") { controllers.first?.js("window.monitor.saveNow()") }
@@ -460,21 +464,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    // MARK: global hot key: show the monitor, or hide it when it is already in front
+    // MARK: global hot keys: show / hide the monitor (id 1), Translation Lens (id 2), Translate at Pointer (id 3)
 
     func registerHotKey() {
         if !hotKeyHandlerInstalled {
             var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-            InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
-                DispatchQueue.main.async { (NSApp.delegate as? AppDelegate)?.toggleVisible() }
+            InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
+                var hk = EventHotKeyID()
+                GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                                  nil, MemoryLayout<EventHotKeyID>.size, nil, &hk)
+                let which = hk.id
+                DispatchQueue.main.async {
+                    let d = NSApp.delegate as? AppDelegate
+                    switch which {
+                    case 2: d?.toggleLens(nil)
+                    case 3: d?.toggleBubble(nil)
+                    default: d?.toggleVisible()
+                    }
+                }
                 return noErr
             }, 1, &spec, nil, nil)
             hotKeyHandlerInstalled = true
         }
         if let ref = hotKeyRef { UnregisterEventHotKey(ref); hotKeyRef = nil }
-        guard let preset = hotKeyPresets[Settings.string("hotkey")] else { return } // "off"
-        let id = EventHotKeyID(signature: OSType(0x434C4D4E), id: 1) // 'CLMN'
-        RegisterEventHotKey(UInt32(preset.key), UInt32(preset.mods), id, GetApplicationEventTarget(), 0, &hotKeyRef)
+        if let ref = lensHotKeyRef { UnregisterEventHotKey(ref); lensHotKeyRef = nil }
+        if let ref = bubbleHotKeyRef { UnregisterEventHotKey(ref); bubbleHotKeyRef = nil }
+        if let preset = hotKeyPresets[Settings.string("hotkey")] { // "off": none
+            let id = EventHotKeyID(signature: OSType(0x434C4D4E), id: 1) // 'CLMN'
+            RegisterEventHotKey(UInt32(preset.key), UInt32(preset.mods), id, GetApplicationEventTarget(), 0, &hotKeyRef)
+        }
+        if let preset = lensHotKeyPresets[Settings.string("lensHotkey")] {
+            let id = EventHotKeyID(signature: OSType(0x434C4D4E), id: 2)
+            RegisterEventHotKey(UInt32(preset.key), UInt32(preset.mods), id, GetApplicationEventTarget(), 0, &lensHotKeyRef)
+        }
+        if let preset = lensHotKeyPresets[Settings.string("bubbleHotkey")] {
+            let id = EventHotKeyID(signature: OSType(0x434C4D4E), id: 3)
+            RegisterEventHotKey(UInt32(preset.key), UInt32(preset.mods), id, GetApplicationEventTarget(), 0, &bubbleHotKeyRef)
+        }
     }
 
     func toggleVisible() {
@@ -536,12 +562,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func copyRtl(_ sender: Any?) { current?.js("window.monitor.copyRtl()") }
     @objc func snapRight(_ sender: Any?) { current?.placeOnRightEdge() }
     @objc func showAll(_ sender: Any?) { toggleVisible() }
+    @objc func toggleLens(_ sender: Any?) { MainActor.assumeIsolated { LensController.toggle() } }
+    @objc func toggleBubble(_ sender: Any?) { MainActor.assumeIsolated { BubbleController.toggle() } }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
         case #selector(toggleOnTop(_:)): item.state = Settings.bool("onTop") ? .on : .off
         case #selector(toggleAllSpaces(_:)): item.state = Settings.bool("allSpaces") ? .on : .off
         case #selector(togglePause(_:)): item.state = paused ? .on : .off
+        case #selector(toggleLens(_:)):
+            item.state = LensController.isOpen ? .on : .off
+            return Settings.bool("f.lens") && Settings.bool("f.translate")
+        case #selector(toggleBubble(_:)):
+            return Settings.bool("f.bubble") && Settings.bool("f.translate")
         case #selector(setThemeSystem(_:)): item.state = Settings.string("theme") == "system" ? .on : .off
         case #selector(setThemeLight(_:)): item.state = Settings.string("theme") == "light" ? .on : .off
         case #selector(setThemeDark(_:)): item.state = Settings.string("theme") == "dark" ? .on : .off
@@ -614,6 +647,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         add(view, L("menu.view.actualSize"), #selector(zoomReset(_:)), "0", target: self)
         view.addItem(.separator())
         add(view, L("menu.view.snapRight"), #selector(snapRight(_:)), "", target: self)
+        view.addItem(.separator())
+        add(view, L("menu.view.bubble"), #selector(toggleBubble(_:)), "", target: self)
+        add(view, L("menu.view.lens"), #selector(toggleLens(_:)), "t", [.command, .option], target: self)
         viewItem.submenu = view
 
         let winItem = NSMenuItem(); main.addItem(winItem)
