@@ -162,29 +162,41 @@ enum AXTextReader {
     /// Visible lines of a text element with their own bounds, or nil when the element cannot report lines.
     private static func lines(of e: AXUIElement, value: String, region: CGRect) -> [LensSpan]? {
         let ns = value as NSString
-        var range = CFRange(location: 0, length: ns.length)
-        if let v = copy(e, kAXVisibleCharacterRangeAttribute), let r = cfRange(v), r.length > 0 { range = r }
-        guard range.length > 0 else { return [] }
-        let lastIndex = max(range.location, range.location + range.length - 1)
-        guard let first = int(param(e, kAXLineForIndexParameterizedAttribute, NSNumber(value: range.location))),
-              let last = int(param(e, kAXLineForIndexParameterizedAttribute, NSNumber(value: lastIndex))),
-              last >= first else { return nil }
+        // Every number below comes from another app and can be NSNotFound (Int.max) or out of range: validate it
+        // before any arithmetic, because Swift traps on integer overflow.
+        let length = ns.length
+        guard length > 0 else { return [] }
+        var start = 0, end = length   // visible characters, end exclusive
+        if let v = copy(e, kAXVisibleCharacterRangeAttribute), let r = cfRange(v),
+           r.location >= 0, r.location < length, r.length > 0 {
+            start = r.location
+            end = r.location + min(r.length, length - r.location)
+        }
+        guard let first = lineIndex(e, start), let last = lineIndex(e, end - 1), last >= first else { return nil }
+        let stop = last - first > maxLinesPerElement ? first + maxLinesPerElement : last
         var out: [LensSpan] = []
         var any = false
-        for line in first...min(last, first + maxLinesPerElement) {
+        for line in first...stop {
             guard let lrValue = param(e, kAXRangeForLineParameterizedAttribute, NSNumber(value: line)),
-                  var lr = cfRange(lrValue), lr.length > 0,
+                  var lr = cfRange(lrValue), lr.length > 0, lr.location >= 0, lr.location < length,
                   let rangeArg = AXValueCreate(.cfRange, &lr),
                   let b = cgRect(param(e, kAXBoundsForRangeParameterizedAttribute, rangeArg)),
                   b.height > 0 else { continue }
             any = true
             guard b.intersects(region) else { continue }
-            let loc = max(0, min(lr.location, ns.length))
-            let len = max(0, min(lr.length, ns.length - loc))
+            let loc = lr.location
+            let len = min(lr.length, length - loc)
             let text = tidy(ns.substring(with: NSRange(location: loc, length: len)))
             if text.contains(where: { $0.isLetter }) { out.append(LensSpan(text: text, rect: b, singleLine: true)) }
         }
         return any ? out : nil
+    }
+
+    /// Line number of a character index, or nil when the app answers nothing sensible (NSNotFound, negative).
+    private static func lineIndex(_ e: AXUIElement, _ index: Int) -> Int? {
+        guard let n = int(param(e, kAXLineForIndexParameterizedAttribute, NSNumber(value: index))),
+              (0...1_000_000).contains(n) else { return nil }
+        return n
     }
 
     // MARK: post-processing
