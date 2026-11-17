@@ -232,12 +232,24 @@ final class ActionsController: NSObject, WKNavigationDelegate {
         generation += 1
         let gen = generation
         present(["status": "running", "id": id, "query": query ?? ""], key: true)
+        let appName = sel.pid != 0 ? NSRunningApplication(processIdentifier: sel.pid)?.localizedName : nil
+        let started = Date()
+        // The log entry; the request is kept even when the popover was closed before the answer came.
+        var entry: [String: Any] = ["action": id, "query": query ?? "", "app": appName ?? "", "source": sel.text,
+                                    "title": TextActions.library().first { $0.id == id }?.name ?? ""]
         Task { @MainActor in
             do {
-                let out = try await TextActions.run(id: id, query: query, text: sel.text)
+                let res = try await TextActions.run(id: id, query: query, text: sel.text, app: appName)
+                let out = res.text
+                entry["result"] = out; entry["model"] = res.model
+                entry["ms"] = Int(Date().timeIntervalSince(started) * 1000)
+                ActionLog.add(entry)
                 guard let me = ActionsController.shared, me === self, gen == me.generation, me.panel.isVisible else { return }
                 me.present(["status": "result", "id": id, "text": out, "canReplace": sel.pid != 0], key: true)
             } catch {
+                entry["error"] = error.localizedDescription
+                entry["ms"] = Int(Date().timeIntervalSince(started) * 1000)
+                ActionLog.add(entry)
                 guard let me = ActionsController.shared, me === self, gen == me.generation, me.panel.isVisible else { return }
                 let code = (error as? ActionFailure)?.code ?? ""
                 me.present(["status": "error", "id": id, "detail": error.localizedDescription, "code": code], key: true)

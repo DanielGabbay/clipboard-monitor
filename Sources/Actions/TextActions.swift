@@ -1,17 +1,42 @@
-import Foundation
+import Cocoa
 
 // MARK: - Text Actions: what can be done to selected text
 //
-// Built-in actions are named by the page (Resources/actions.js); custom ones carry their own name and prompt and
-// live in the "customActions" setting as a JSON array of {id, name, prompt}. "translate:<code>" translates with
-// the translation settings (Apple on-device or the chosen model), so it works without an AI provider. Text typed
-// in the popover's search field that matches no action runs as a free instruction ("ask").
+// The action library is the "actionsList" setting: a JSON array of {id, name?, icon?, prompt?, replaces?}, in the
+// order the popover shows. An empty list means the defaults below. Built-in ids keep their localized name (the
+// page names them) and default prompt until the user changes them; any other id is the user's own action.
+// Actions made before the library existed ("customActions") are added to the defaults.
+//
+// Prompt placeholders, written {{ NAME }} (case and spaces do not matter):
+//   SELECTED TEXT  the selection. Without it the selection is sent on its own, after the prompt.
+//   CLIPBOARD      the text on the clipboard        APP    the app the text came from
+//   LANGUAGE       the interface language            DATE / TIME   now
+//
+// "translate:<code>" translates with the translation settings (Apple on-device or the chosen model), so it works
+// without an AI provider. Text typed in the popover's search field that matches no action runs as a free
+// instruction ("ask").
 
 struct ActionFailure: LocalizedError, Sendable {
-    /// "noModel" (the page offers the AI settings) or "" for a plain message.
+    /// "noModel" (the page offers the AI settings), "sameLanguage", a translation error code, or "".
     let code: String
     let message: String
     var errorDescription: String? { message }
+}
+
+struct ActionDef: Sendable {
+    let id: String
+    /// nil: a built-in action that still has its localized name.
+    let name: String?
+    let icon: String
+    let prompt: String
+    /// The result is a new version of the text, so "Replace" is the main button.
+    let replaces: Bool
+}
+
+struct ActionResult: Sendable {
+    let text: String
+    /// "provider / model" for the log; empty when no model was involved (Apple translation).
+    let model: String
 }
 
 @MainActor
@@ -21,36 +46,61 @@ enum TextActions {
     code, URLs and names as they are.
     """
 
-    static let builtIn: [(id: String, prompt: String)] = [
-        ("improve", "Rewrite the user's text so it reads clearly and naturally. Keep its meaning, tone and language."),
-        ("fix", "Correct the spelling, grammar and punctuation of the user's text. Change nothing else: keep the wording, tone and language."),
-        ("simplify", "Rewrite the user's text in simpler, plainer words. Keep its meaning and language."),
-        ("paraphrase", "Say the same thing as the user's text in different words. Keep its meaning, length and language."),
-        ("summarize", "Summarize the user's text in a few short sentences, in the language of the text."),
-        ("explain", "Explain in plain words what the user's text means."),
+    static let defaults: [ActionDef] = [
+        ActionDef(id: "improve", name: nil, icon: "improve", prompt: "Rewrite the user's text so it reads clearly and naturally. Keep its meaning, tone and language.", replaces: true),
+        ActionDef(id: "fix", name: nil, icon: "fix", prompt: "Correct the spelling, grammar and punctuation of the user's text. Change nothing else: keep the wording, tone and language.", replaces: true),
+        ActionDef(id: "simplify", name: nil, icon: "simplify", prompt: "Rewrite the user's text in simpler, plainer words. Keep its meaning and language.", replaces: true),
+        ActionDef(id: "paraphrase", name: nil, icon: "paraphrase", prompt: "Say the same thing as the user's text in different words. Keep its meaning, length and language.", replaces: true),
+        ActionDef(id: "summarize", name: nil, icon: "summarize", prompt: "Summarize the user's text in a few short sentences, in the language of the text.", replaces: false),
+        ActionDef(id: "explain", name: nil, icon: "explain", prompt: "Explain in plain words what the user's text means. Answer in {{ LANGUAGE }}.", replaces: false),
     ]
 
-    /// Actions whose result is a new version of the text, so "Replace" is the main button.
-    static let rewrites: Set<String> = ["improve", "fix", "simplify", "paraphrase"]
-
-    static func custom() -> [(id: String, name: String, prompt: String)] {
-        guard let data = Settings.string("customActions").data(using: .utf8),
+    private static func json(_ key: String) -> [[String: Any]] {
+        guard let data = Settings.string(key).data(using: .utf8),
               let arr = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return [] }
-        return arr.compactMap { d in
-            guard let id = d["id"] as? String, let name = (d["name"] as? String)?.trimmingCharacters(in: .whitespaces),
-                  let prompt = (d["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !name.isEmpty, !prompt.isEmpty else { return nil }
-            return (id, name, prompt)
+        return arr
+    }
+
+    /// The actions in popover order: the saved library, else the defaults plus older custom actions.
+    static func library() -> [ActionDef] {
+        let saved = json("actionsList")
+        guard !saved.isEmpty else {
+            let old = json("customActions").compactMap { d -> ActionDef? in
+                guard let id = d["id"] as? String else { return nil }
+                return ActionDef(id: "custom:" + id, name: d["name"] as? String ?? "", icon: "custom",
+                                 prompt: d["prompt"] as? String ?? "", replaces: true)
+            }
+            return defaults + old
+        }
+        return saved.compactMap { d in
+            guard let id = d["id"] as? String, !id.isEmpty, id != "ask", !id.hasPrefix("translate:") else { return nil }
+            let base = defaults.first { $0.id == id }
+            let name = (d["name"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+            let prompt = (d["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return ActionDef(id: id, name: name.isEmpty ? (base == nil ? "" : nil) : name,
+                             icon: (d["icon"] as? String) ?? base?.icon ?? "custom",
+                             prompt: prompt.isEmpty ? (base?.prompt ?? "") : prompt,
+                             replaces: (d["replaces"] as? Bool) ?? base?.replaces ?? true)
         }
     }
 
-    /// The list the popover shows, in order: built-in, translate targets, custom.
+    private static func dict(_ a: ActionDef) -> [String: Any] {
+        ["id": a.id, "name": a.name ?? "", "icon": a.icon, "prompt": a.prompt, "replaces": a.replaces,
+         "builtin": defaults.contains { $0.id == a.id }]
+    }
+
+    /// The whole library for the settings editor, and the built-in defaults for "restore".
+    static func libraryForPage() -> [[String: Any]] { library().map(dict) }
+    static func defaultsForPage() -> [[String: Any]] { defaults.map(dict) }
+
+    /// The list the popover shows: usable library actions, then the translate targets.
     static func listForPage() -> [[String: Any]] {
-        var out: [[String: Any]] = builtIn.map { ["id": $0.id, "kind": "builtin", "replaces": rewrites.contains($0.id)] }
+        var out: [[String: Any]] = library().filter { $0.name != "" && !$0.prompt.isEmpty }.map {
+            ["id": $0.id, "kind": $0.name == nil ? "builtin" : "custom", "title": $0.name ?? "", "icon": $0.icon, "replaces": $0.replaces]
+        }
         let targets = Settings.string("translateTargets").split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        out += targets.map { ["id": "translate:" + $0, "kind": "translate", "lang": $0, "replaces": true] }
-        out += custom().map { ["id": "custom:" + $0.id, "kind": "custom", "title": $0.name, "replaces": true] }
+        out += targets.map { ["id": "translate:" + $0, "kind": "translate", "lang": $0, "icon": "translate", "replaces": true] }
         return out
     }
 
@@ -85,10 +135,43 @@ enum TextActions {
         return out
     }
 
+    // MARK: prompt
+
+    private static func pattern(_ name: String) -> NSRegularExpression? {
+        let words = name.split(separator: " ").map { NSRegularExpression.escapedPattern(for: String($0)) }.joined(separator: "\\s+")
+        return try? NSRegularExpression(pattern: "\\{\\{\\s*" + words + "\\s*\\}\\}", options: .caseInsensitive)
+    }
+
+    private static func has(_ name: String, in s: String) -> Bool {
+        pattern(name)?.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
+    }
+
+    private static func fill(_ name: String, with value: String, in s: String) -> String {
+        guard let re = pattern(name) else { return s }
+        return re.stringByReplacingMatches(in: s, range: NSRange(s.startIndex..., in: s),
+                                           withTemplate: NSRegularExpression.escapedTemplate(for: value))
+    }
+
+    /// The system and user messages for a prompt. A prompt that places the selection itself is sent whole as the
+    /// user message; otherwise the prompt is the instruction and the selection is the message.
+    static func compose(_ prompt: String, text: String, app: String?) -> (system: String, user: String) {
+        var p = prompt
+        if has("CLIPBOARD", in: p) { p = fill("CLIPBOARD", with: NSPasteboard.general.string(forType: .string) ?? "", in: p) }
+        p = fill("APP", with: app ?? "", in: p)
+        p = fill("LANGUAGE", with: TranslationRouter.languageName(Loc.lang), in: p)
+        let now = Date()
+        p = fill("DATE", with: DateFormatter.localizedString(from: now, dateStyle: .long, timeStyle: .none), in: p)
+        p = fill("TIME", with: DateFormatter.localizedString(from: now, dateStyle: .none, timeStyle: .short), in: p)
+        if has("SELECTED TEXT", in: p) { return (outputRule, fill("SELECTED TEXT", with: text, in: p)) }
+        return (p + "\n" + outputRule, text)
+    }
+
     // MARK: run
 
-    static func run(id: String, query: String?, text: String) async throws -> String {
-        if id.hasPrefix("translate:") { return try await translate(text, to: String(id.dropFirst("translate:".count))) }
+    static func run(id: String, query: String?, text: String, app: String?) async throws -> ActionResult {
+        if id.hasPrefix("translate:") {
+            return ActionResult(text: try await translate(text, to: String(id.dropFirst("translate:".count))), model: "")
+        }
         let system: String, user: String
         if id == "ask" {
             guard let q = query?.trimmingCharacters(in: .whitespacesAndNewlines), !q.isEmpty else {
@@ -96,14 +179,8 @@ enum TextActions {
             }
             system = "The user gives an instruction and a text. Apply the instruction to the text. " + outputRule
             user = "Instruction: \(q)\n\nText:\n\(text)"
-        } else if id.hasPrefix("custom:"), let c = custom().first(where: { "custom:" + $0.id == id }) {
-            system = c.prompt + "\n" + outputRule
-            user = text
-        } else if let b = builtIn.first(where: { $0.id == id }) {
-            var p = b.prompt
-            if id == "explain" { p += " Answer in \(TranslationRouter.languageName(Loc.lang))." }
-            system = p + " " + outputRule
-            user = text
+        } else if let a = library().first(where: { $0.id == id }), !a.prompt.isEmpty {
+            (system, user) = compose(a.prompt, text: text, app: app)
         } else {
             throw ActionFailure(code: "", message: "Unknown action")
         }
@@ -112,7 +189,8 @@ enum TextActions {
                                                   maxTokens: nil, timeout: AITimeout.action)
         let result = out.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !result.isEmpty else { throw ActionFailure(code: "", message: "The model returned an empty answer") }
-        return result
+        let provider = AIService.shared.provider(m.providerId)?.name ?? ""
+        return ActionResult(text: result, model: provider.isEmpty ? m.model : provider + " / " + m.model)
     }
 
     /// Translates line by line so the text keeps its paragraphs; lines already in the target language stay.

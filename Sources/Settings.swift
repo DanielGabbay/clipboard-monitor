@@ -39,7 +39,9 @@ enum Settings {
         "menuBarIcon": true,
         "actionsProvider": "",              // empty: the translation model, else the first usable model
         "actionsModel": "",
-        "customActions": "[]",              // JSON: [{id, name, prompt}]
+        "actionsList": "[]",                // the action library, JSON: [{id, name?, icon?, prompt?, replaces?}]; empty: defaults
+        "customActions": "[]",              // older custom actions [{id, name, prompt}], read when the library is empty
+        "actionsLogKeep": true,             // keep a log of the requests (actions-history.json)
         // AI
         "modelRefreshHours": 24,
     ]

@@ -180,6 +180,7 @@ final class MonitorController: NSObject, NSWindowDelegate, WKNavigationDelegate 
             }
         case "version": call("monitor.versionInfo", AppVersion.info())
         case let c where c.hasPrefix("ai."): AIService.shared.handle(c, body, from: self)
+        case let c where c.hasPrefix("actionsLog."): MainActor.assumeIsolated { ActionLog.handle(c, body, from: self) }
         case "openTranslationSettings":
             if let url = URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension") { NSWorkspace.shared.open(url) }
         case "preview":
@@ -436,6 +437,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         var s = Settings.all
         s["loginItem"] = loginItemEnabled
         s["uiLangResolved"] = Loc.lang
+        // The effective action library (defaults filled in) and the built-in defaults, for the settings editor.
+        MainActor.assumeIsolated {
+            s["actionsLibrary"] = TextActions.libraryForPage()
+            s["actionsDefaults"] = TextActions.defaultsForPage()
+        }
         if #available(macOS 13.0, *) { s["loginSupported"] = true } else { s["loginSupported"] = false }
         return s
     }

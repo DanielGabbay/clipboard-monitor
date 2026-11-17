@@ -17,7 +17,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   instruction). The result shows in the popover, with Replace (writes it over the selection) and Copy.
 - Four ways to open the popover: a shortcut you record yourself (⌃⌥A by default), a small button next to a fresh
   selection, a menu bar icon, and right-click › Services › "TextMonitor: Text Actions".
-- Settings › Text Actions: the shortcut, the button, the menu bar icon, the model for actions, and your own actions.
+- Settings › Text Actions, in three parts. Options: the shortcut, the button, the menu bar icon and the model.
+  Actions: the library the popover offers, where every action (built-in ones too) can be renamed, given another
+  icon or prompt, reordered, removed or added; prompts take placeholders such as `{{ SELECTED TEXT }}`,
+  `{{ CLIPBOARD }}`, `{{ LANGUAGE }}`, `{{ APP }}`, `{{ DATE }}` and `{{ TIME }}`. Log: every request with its date,
+  time, app, model, selected text and answer, searchable, kept only on this Mac and switchable off.
 - Hebrew and English interface, chosen in Settings or following the macOS language. The window chrome, settings,
   context menu, cards and the macOS menus switch to right-to-left in Hebrew; clipboard content keeps its own
   per-block direction.

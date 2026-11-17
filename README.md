@@ -25,6 +25,8 @@ for mixed **Hebrew / English (RTL + LTR)** text. Formerly Clipboard Monitor.
   on the clipboard. Open it with a shortcut you record (⌃⌥A by default), the small button that appears next to a
   fresh selection, the menu bar icon, or right-click › Services › "TextMonitor: Text Actions". Actions use the AI
   model you choose; translation also works with Apple's on-device engine. Password fields are never read.
+  Settings › Text Actions holds the action library (edit any name, icon or prompt, add your own, use placeholders
+  such as `{{ SELECTED TEXT }}`) and a searchable log of every request.
 - **Translate at Pointer.** Point at a paragraph or select text in any app and press ⌃⌥T: the translation opens in
   a small card next to it, with the original one click away, Copy, and "Open in TextMonitor". The text comes
   from the app's accessibility tree, so it is exact, Hebrew included, and nothing passes through the clipboard; it

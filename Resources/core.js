@@ -26,7 +26,7 @@
       translateEngine: 'apple', translateProvider: '', translateModel: '', translateFallbackApple: true,
       translateTargets: 'he,en,ar,ru,fr,es,de', modelRefreshHours: 24,
       lensTarget: '', lensAutoRefresh: true, lensMode: 'reading', lensHotkey: 'ctrl-opt-cmd-t', bubbleHotkey: 'ctrl-opt-t',
-      actionsHotkey: 'ctrl+opt+KeyA', actionsButton: true, menuBarIcon: true, actionsProvider: '', actionsModel: '', customActions: '[]',
+      actionsHotkey: 'ctrl+opt+KeyA', actionsButton: true, menuBarIcon: true, actionsProvider: '', actionsModel: '', actionsList: '[]', actionsLogKeep: true, actionsLibrary: [], actionsDefaults: [],
     },
     ai: { providers: [], presets: [] },
     on(evt, fn) { (listeners[evt] = listeners[evt] || []).push(fn); },

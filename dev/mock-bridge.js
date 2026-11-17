@@ -7,7 +7,17 @@
   const later = (fn, ms = 300) => setTimeout(fn, ms);
   const call = (fn, arg) => later(() => { const [a, b] = fn.split('.'); window[a] && window[a][b] && window[a][b](arg); }, 0);
 
-  const S = { uiLang: 'system', uiLangResolved: 'en', loginSupported: true };
+  const DEFAULT_ACTIONS = [['improve', true], ['fix', true], ['simplify', true], ['paraphrase', true], ['summarize', false], ['explain', false]]
+    .map(([id, replaces]) => ({ id, name: '', icon: id, prompt: 'Default prompt for ' + id + '.', replaces, builtin: true }));
+  const S = { uiLang: 'system', uiLangResolved: 'en', loginSupported: true, actionsDefaults: DEFAULT_ACTIONS, actionsLibrary: DEFAULT_ACTIONS };
+  let actionsLog = [
+    { id: 'l1', time: Date.now() - 5 * 60e3, action: 'fix', title: '', query: '', app: 'TextEdit', model: 'Anthropic / claude-sonnet-5-5', ms: 1840,
+      source: 'We moved the meeting to thursday because the team need more time.', result: 'We moved the meeting to Thursday because the team needs more time.' },
+    { id: 'l2', time: Date.now() - 26 * 3600e3, action: 'translate:he', title: '', query: '', app: 'Safari', model: '', ms: 420,
+      source: 'The help pages go live next week.', result: 'דפי העזרה עולים לאוויר בשבוע הבא.' },
+    { id: 'l3', time: Date.now() - 27 * 3600e3, action: 'ask', title: '', query: 'make it a haiku', app: 'Notes', model: 'Anthropic / claude-haiku-5-5', ms: 9000,
+      source: 'The new signup flow is in review.', error: 'The request timed out.' },
+  ];
   const presets = [
     { kind: 'openai', name: 'OpenAI', baseURL: 'https://api.openai.com/v1', needsKey: true },
     { kind: 'anthropic', name: 'Anthropic', baseURL: 'https://api.anthropic.com', needsKey: true },
@@ -38,9 +48,16 @@
     switch (m.cmd) {
       case 'set':
         S[m.key] = m.value;
+        if (m.key === 'actionsList') {
+          let list = []; try { list = JSON.parse(m.value); } catch (e) { /* keep the defaults */ }
+          S.actionsLibrary = list.length ? list.map((a) => Object.assign({ builtin: DEFAULT_ACTIONS.some((d) => d.id === a.id) }, a)) : DEFAULT_ACTIONS;
+        }
         if (m.key === 'uiLang') S.uiLangResolved = m.value === 'system' ? (navigator.language.startsWith('he') ? 'he' : 'en') : m.value;
         call('monitor.setSettings', S);
         break;
+      case 'actionsLog.list': call('monitor.actionsLog', { items: actionsLog }); break;
+      case 'actionsLog.delete': actionsLog = actionsLog.filter((e) => e.id !== m.id); call('monitor.actionsLog', { items: actionsLog }); break;
+      case 'actionsLog.clear': actionsLog = []; call('monitor.actionsLog', { items: actionsLog }); break;
       case 'version':
         call('monitor.versionInfo', { version: '1.1.0', build: '42', commit: '993371a', buildDate: new Date().toISOString(),
           dirty: false, os: 'Version 27.2 (Build 26B5091g)', changelog: '## [1.1.0]\n### Added\n- Hebrew interface\n- AI providers\n' });

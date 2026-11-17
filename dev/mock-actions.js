@@ -14,7 +14,7 @@
     { id: 'summarize', kind: 'builtin', replaces: false }, { id: 'explain', kind: 'builtin', replaces: false },
     { id: 'translate:he', kind: 'translate', lang: 'he', replaces: true }, { id: 'translate:en', kind: 'translate', lang: 'en', replaces: true },
     { id: 'translate:fr', kind: 'translate', lang: 'fr', replaces: true },
-    { id: 'custom:1', kind: 'custom', title: 'Make it formal', replaces: true },
+    { id: 'custom:1', kind: 'custom', title: 'Make it formal', icon: 'mail', replaces: true },
   ];
   const MODELS = [
     { value: 'p1\nclaude-sonnet-5-5', label: 'claude-sonnet-5-5', group: 'Anthropic' },

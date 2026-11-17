@@ -23,14 +23,6 @@
       'actions.replace': 'Replace',
       'actions.copy': 'Copy',
       'actions.none': 'No matching action.',
-      'actions.a.improve': 'Improve writing',
-      'actions.a.fix': 'Fix spelling and grammar',
-      'actions.a.simplify': 'Simplify language',
-      'actions.a.paraphrase': 'Paraphrase',
-      'actions.a.summarize': 'Summarize',
-      'actions.a.explain': 'Explain',
-      'actions.a.translate': 'Translate to {lang}',
-      'actions.a.ask': 'Ask AI: {q}',
       'actions.status.reading': 'Reading the selection…',
       'actions.status.running': 'Working…',
       'actions.status.error': 'That didn\'t work: {detail}',
@@ -58,14 +50,6 @@
       'actions.replace': 'החלף',
       'actions.copy': 'העתק',
       'actions.none': 'אין פעולה מתאימה.',
-      'actions.a.improve': 'שפר ניסוח',
-      'actions.a.fix': 'תקן כתיב ודקדוק',
-      'actions.a.simplify': 'פשט את השפה',
-      'actions.a.paraphrase': 'נסח מחדש',
-      'actions.a.summarize': 'סכם',
-      'actions.a.explain': 'הסבר',
-      'actions.a.translate': 'תרגם ל{lang}',
-      'actions.a.ask': 'שאל את ה־AI: {q}',
       'actions.status.reading': 'קורא את הטקסט המסומן…',
       'actions.status.running': 'עובד…',
       'actions.status.error': 'הפעולה נכשלה: {detail}',
@@ -82,17 +66,6 @@
     },
   });
 
-  const ICON = {
-    improve: 'M3 13l1-3 7-7 2 2-7 7-3 1z',
-    fix: 'M3 8.5l3 3 7-7',
-    simplify: 'M3 13l8-8M10 2v2M14 6h-2M13 3l-1 1',
-    paraphrase: 'M3 6a5 5 0 0 1 9-1.5M13 3v2.5h-2.5M13 10a5 5 0 0 1-9 1.5M3 13v-2.5h2.5',
-    summarize: 'M3 4h10M3 8h10M3 12h6',
-    explain: 'M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12zM6.5 6.3a1.6 1.6 0 1 1 2.3 1.5c-.5.3-.8.6-.8 1.2M8 11.2v.1',
-    translate: 'M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12zM2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12',
-    custom: 'M8 2l1.5 4.5L14 8l-4.5 1.5L8 14l-1.5-4.5L2 8l4.5-1.5z',
-  };
-
   const $ = (s) => document.querySelector(s);
   const native = (msg) => { try { window.webkit.messageHandlers.app.postMessage(msg); } catch (e) { (window.__sent = window.__sent || []).push(msg); } };
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -103,26 +76,8 @@
   let view = '';          // list | work
   let result = { text: '', replaces: false, canReplace: false };
 
-  function langName(code) {
-    try { return new Intl.DisplayNames([I18N.locale], { type: 'language' }).of(code) || code; } catch (e) { return code; }
-  }
-
-  function title(a) {
-    if (a.kind === 'custom') return a.title || '';
-    if (a.kind === 'translate') return t('actions.a.translate', { lang: langName(a.lang) });
-    if (a.kind === 'ask') return t('actions.a.ask', { q: a.query });
-    return t('actions.a.' + a.id);
-  }
-
-  function icon(a) {
-    const d = ICON[a.kind === 'builtin' ? a.id : (a.kind === 'translate' ? 'translate' : 'custom')] || ICON.custom;
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', '15'); svg.setAttribute('height', '15'); svg.setAttribute('viewBox', '0 0 16 16');
-    svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '1.4');
-    svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round'); svg.setAttribute('aria-hidden', 'true');
-    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', d); svg.appendChild(p);
-    return svg;
-  }
+  const title = (a) => ACTIONS.title(a);
+  const icon = (a) => ACTIONS.icon(a.icon || (a.kind === 'ask' ? 'custom' : a.id));
 
   function filter() {
     const q = $('#q').value.trim();
