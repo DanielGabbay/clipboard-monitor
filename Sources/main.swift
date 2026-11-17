@@ -1,7 +1,8 @@
-// Clipboard Monitor: small always-visible windows that show the clipboard with correct Hebrew/English (BiDi)
-// rendering, and render Markdown / rich text / code. AppKit shell + one WKWebView per window (or tab).
-// Rendering and the settings panel live in Resources/ (index.html + *.js); Resources/bidi-fix.js is the BiDi engine.
-// Other Swift files: Settings, Localization, Translation, AI/*, Lens/* (Translation Lens), Version.
+// TextMonitor (formerly Clipboard Monitor): small always-visible windows that show the clipboard with correct
+// Hebrew/English (BiDi) rendering, and render Markdown / rich text / code. AppKit shell + one WKWebView per window
+// (or tab). Rendering and the settings panel live in Resources/ (index.html + *.js); Resources/bidi-fix.js is the
+// BiDi engine. Other Swift files: Settings, Localization, Translation, AI/*, Lens/* (Translation Lens, Translate at
+// Pointer), Actions/* (Text Actions on the selected text of any app), Version.
 import Cocoa
 import WebKit
 import Carbon
@@ -204,7 +205,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var hotKeyRef: EventHotKeyRef?
     var lensHotKeyRef: EventHotKeyRef?
     var bubbleHotKeyRef: EventHotKeyRef?
+    var actionsHotKeyRef: EventHotKeyRef?
     var hotKeyHandlerInstalled = false
+    /// Clipboard changes before this moment are not recorded (a temporary copy or paste made by Text Actions).
+    var ignoreClipboardUntil = Date.distantPast
+    /// The last app other than this one that was in front, and when this app last came to the front.
+    var lastExternalApp: NSRunningApplication?
+    var lastSelfActivation = Date.distantPast
+    var statusItem: NSStatusItem?
 
     // Pasteboard types that password managers and similar apps use to mark secrets / throwaway data
     // (http://nspasteboard.org). We never display or keep those.
@@ -213,7 +221,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         "com.agilebits.onepassword", "de.petermaurer.TransientPasteboardType",
     ]
 
-    /// ~/Library/Application Support/Clipboard Monitor (history.json, ai-providers.json).
+    /// ~/Library/Application Support/Clipboard Monitor (history.json, ai-providers.json). The folder keeps the
+    /// app's first name so existing history and providers stay where they are.
     static let supportDir: URL = {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Clipboard Monitor", isDirectory: true)
@@ -235,6 +244,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         registerHotKey()
         enableLoginItemOnFirstRun()
         AIService.shared.start()
+        trackFrontApp()
+        NSApp.servicesProvider = self
+        NSUpdateDynamicServices()
+        updateStatusItem()
+        MainActor.assumeIsolated { SelectionWatcher.shared.refresh() }
         timer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: true) { [weak self] _ in self?.poll() }
         RunLoop.main.add(timer!, forMode: .common)
         NSApp.activate(ignoringOtherApps: true)
@@ -305,7 +319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let cc = pb.changeCount
         guard cc != lastChange else { return }
         lastChange = cc
-        if paused { return }
+        if paused || Date() < ignoreClipboardUntil { return }
         let types = pb.types?.map { $0.rawValue } ?? []
         let front = NSWorkspace.shared.frontmostApplication
         if isIgnored(front) { return }
@@ -436,6 +450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func setSetting(_ key: String, _ value: Any) {
+        let previous = Settings.get(key)
         switch key {
         case "loginItem": setLoginItem((value as? NSNumber)?.boolValue ?? false)
         default:
@@ -446,7 +461,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case "onTop", "allSpaces": controllers.forEach { $0.applyWindowPrefs() }
         case "theme": applyTheme()
         case "zoom": controllers.forEach { $0.web.pageZoom = Settings.double("zoom"); $0.sendInsets() }
-        case "hotkey", "lensHotkey", "bubbleHotkey": registerHotKey()
+        case "hotkey", "lensHotkey", "bubbleHotkey", "actionsHotkey":
+            // A shortcut macOS refuses (taken by this app or another one) is not kept.
+            if registerHotKey().contains(key) {
+                Settings.set(key, previous)
+                registerHotKey()
+                controllers.forEach { $0.call("monitor.hotkeyRejected", ["key": key]) }
+            }
+        case "f.actions", "actionsButton": MainActor.assumeIsolated { SelectionWatcher.shared.refresh() }
+        case "menuBarIcon": updateStatusItem()
         case "uiLang": buildMenu()
         case "keepHistory":
             if Settings.bool("keepHistory") { controllers.first?.js("window.monitor.saveNow()") }
@@ -464,9 +487,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    // MARK: global hot keys: show / hide the monitor (id 1), Translation Lens (id 2), Translate at Pointer (id 3)
+    // MARK: global hot keys: show / hide the monitor (id 1), Translation Lens (id 2), Translate at Pointer (id 3),
+    // Text Actions (id 4)
 
-    func registerHotKey() {
+    /// Registers the shortcuts from settings again. Returns the setting keys whose shortcut macOS refused.
+    @discardableResult
+    func registerHotKey() -> [String] {
         if !hotKeyHandlerInstalled {
             var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
             InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
@@ -479,6 +505,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     switch which {
                     case 2: d?.toggleLens(nil)
                     case 3: d?.toggleBubble(nil)
+                    case 4: d?.toggleActions(nil)
                     default: d?.toggleVisible()
                     }
                 }
@@ -486,20 +513,115 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }, 1, &spec, nil, nil)
             hotKeyHandlerInstalled = true
         }
-        if let ref = hotKeyRef { UnregisterEventHotKey(ref); hotKeyRef = nil }
-        if let ref = lensHotKeyRef { UnregisterEventHotKey(ref); lensHotKeyRef = nil }
-        if let ref = bubbleHotKeyRef { UnregisterEventHotKey(ref); bubbleHotKeyRef = nil }
-        if let preset = hotKeyPresets[Settings.string("hotkey")] { // "off": none
-            let id = EventHotKeyID(signature: OSType(0x434C4D4E), id: 1) // 'CLMN'
-            RegisterEventHotKey(UInt32(preset.key), UInt32(preset.mods), id, GetApplicationEventTarget(), 0, &hotKeyRef)
+        for ref in [hotKeyRef, lensHotKeyRef, bubbleHotKeyRef, actionsHotKeyRef] { if let ref { UnregisterEventHotKey(ref) } }
+        hotKeyRef = nil; lensHotKeyRef = nil; bubbleHotKeyRef = nil; actionsHotKeyRef = nil
+        var failed: [String] = []
+        func register(_ key: String, _ id: UInt32) -> EventHotKeyRef? {
+            guard let combo = HotKey.parse(Settings.string(key)) else { return nil }    // "off": none
+            var ref: EventHotKeyRef?
+            let hk = EventHotKeyID(signature: OSType(0x434C4D4E), id: id) // 'CLMN'
+            let status = RegisterEventHotKey(UInt32(combo.key), UInt32(combo.mods), hk, GetApplicationEventTarget(), 0, &ref)
+            if status != noErr { failed.append(key); return nil }
+            return ref
         }
-        if let preset = lensHotKeyPresets[Settings.string("lensHotkey")] {
-            let id = EventHotKeyID(signature: OSType(0x434C4D4E), id: 2)
-            RegisterEventHotKey(UInt32(preset.key), UInt32(preset.mods), id, GetApplicationEventTarget(), 0, &lensHotKeyRef)
+        hotKeyRef = register("hotkey", 1)
+        lensHotKeyRef = register("lensHotkey", 2)
+        bubbleHotKeyRef = register("bubbleHotkey", 3)
+        actionsHotKeyRef = register("actionsHotkey", 4)
+        return failed
+    }
+
+    // MARK: Text Actions entry points: front app, clipboard quiet time, menu bar icon, Services menu
+
+    /// The app the user is working in: the front app, or the last one that was in front when this app is.
+    var externalApp: NSRunningApplication? {
+        let front = NSWorkspace.shared.frontmostApplication
+        if let front, front.processIdentifier != getpid() { return front }
+        return lastExternalApp
+    }
+
+    func trackFrontApp() {
+        lastExternalApp = externalApp
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
+                                                          object: nil, queue: .main) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            if app.processIdentifier == getpid() { self?.lastSelfActivation = Date() } else { self?.lastExternalApp = app }
         }
-        if let preset = lensHotKeyPresets[Settings.string("bubbleHotkey")] {
-            let id = EventHotKeyID(signature: OSType(0x434C4D4E), id: 3)
-            RegisterEventHotKey(UInt32(preset.key), UInt32(preset.mods), id, GetApplicationEventTarget(), 0, &bubbleHotKeyRef)
+    }
+
+    /// Keeps the next clipboard changes out of the monitor and its history.
+    func suppressClipboard(for seconds: TimeInterval) {
+        ignoreClipboardUntil = max(ignoreClipboardUntil, Date().addingTimeInterval(seconds))
+    }
+
+    func updateStatusItem() {
+        if Settings.bool("menuBarIcon") {
+            guard statusItem == nil else { return }
+            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+            if let b = item.button {
+                b.image = NSImage(systemSymbolName: "text.cursor", accessibilityDescription: "TextMonitor")
+                b.target = self
+                b.action = #selector(statusItemClicked(_:))
+                b.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            }
+            statusItem = item
+        } else if let item = statusItem {
+            NSStatusBar.system.removeStatusItem(item)
+            statusItem = nil
+        }
+    }
+
+    /// A click opens Text Actions under the icon on the current selection; a right-click (or ⌃-click) opens the menu.
+    @objc func statusItemClicked(_ sender: Any?) {
+        let e = NSApp.currentEvent
+        if e?.type == .rightMouseUp || e?.modifierFlags.contains(.control) == true || !Settings.bool("f.actions") {
+            showStatusMenu()
+            return
+        }
+        var anchor: CGRect?
+        if let f = statusItem?.button?.window?.frame {
+            let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+            anchor = CGRect(x: f.minX, y: primaryHeight - f.maxY, width: f.width, height: f.height)
+        }
+        MainActor.assumeIsolated { ActionsController.toggle(anchor: anchor) }
+    }
+
+    func showStatusMenu() {
+        let m = NSMenu()
+        func add(_ title: String, _ action: Selector, target: AnyObject? = nil) {
+            let it = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            it.target = target ?? self
+            m.addItem(it)
+        }
+        add(L("menu.view.actions"), #selector(toggleActions(_:)))
+        add(L("menu.view.bubble"), #selector(toggleBubble(_:)))
+        add(L("menu.view.lens"), #selector(toggleLens(_:)))
+        m.addItem(.separator())
+        add(L("menu.window.showHide"), #selector(showAll(_:)))
+        add(L("menu.view.pause"), #selector(togglePause(_:)))
+        add(L("menu.app.settings"), #selector(openSettingsInFront(_:)))
+        m.addItem(.separator())
+        add(L("menu.app.quit"), #selector(NSApplication.terminate(_:)), target: NSApp)
+        statusItem?.menu = m
+        statusItem?.button?.performClick(nil)
+        statusItem?.menu = nil
+    }
+
+    /// Services menu entry "TextMonitor: Text Actions" (Info.plist NSServices): macOS hands over the selected text.
+    @objc func textActions(_ pboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        guard let text = pboard.string(forType: .string), !text.isEmpty else { return }
+        DispatchQueue.main.async {
+            // macOS may bring this app forward to run the service: give the front back to the app the text came
+            // from. When the service was used inside one of this app's own windows there is nowhere to write back.
+            var target: pid_t = 0
+            let front = NSWorkspace.shared.frontmostApplication
+            if let front, front.processIdentifier != getpid() {
+                target = front.processIdentifier
+            } else if Date().timeIntervalSince(self.lastSelfActivation) < 1.5, let other = self.lastExternalApp {
+                other.activate()
+                target = other.processIdentifier
+            }
+            MainActor.assumeIsolated { ActionsController.open(text: text, targetPid: target) }
         }
     }
 
@@ -564,6 +686,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func showAll(_ sender: Any?) { toggleVisible() }
     @objc func toggleLens(_ sender: Any?) { MainActor.assumeIsolated { LensController.toggle() } }
     @objc func toggleBubble(_ sender: Any?) { MainActor.assumeIsolated { BubbleController.toggle() } }
+    @objc func toggleActions(_ sender: Any?) { MainActor.assumeIsolated { ActionsController.toggle() } }
+    @objc func openSettingsInFront(_ sender: Any?) { openSettings(nil); NSApp.activate(ignoringOtherApps: true) }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
@@ -575,6 +699,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return Settings.bool("f.lens") && Settings.bool("f.translate")
         case #selector(toggleBubble(_:)):
             return Settings.bool("f.bubble") && Settings.bool("f.translate")
+        case #selector(toggleActions(_:)):
+            return Settings.bool("f.actions")
         case #selector(setThemeSystem(_:)): item.state = Settings.string("theme") == "system" ? .on : .off
         case #selector(setThemeLight(_:)): item.state = Settings.string("theme") == "light" ? .on : .off
         case #selector(setThemeDark(_:)): item.state = Settings.string("theme") == "dark" ? .on : .off
@@ -648,6 +774,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         view.addItem(.separator())
         add(view, L("menu.view.snapRight"), #selector(snapRight(_:)), "", target: self)
         view.addItem(.separator())
+        add(view, L("menu.view.actions"), #selector(toggleActions(_:)), "", target: self)
         add(view, L("menu.view.bubble"), #selector(toggleBubble(_:)), "", target: self)
         add(view, L("menu.view.lens"), #selector(toggleLens(_:)), "t", [.command, .option], target: self)
         viewItem.submenu = view

@@ -3,11 +3,11 @@
 // top of Resources/i18n-core-he.js: imperative commands, maqaf before Latin words, "לוח" for the clipboard.
 extension Loc {
     static let he: [String: String] = [
-        "menu.app.about": "אודות Clipboard Monitor",
+        "menu.app.about": "אודות TextMonitor",
         "menu.app.settings": "הגדרות…",
         "menu.app.loginItem": "פתח בעת התחברות",
         "menu.app.hide": "הסתר",
-        "menu.app.quit": "צא מ־Clipboard Monitor",
+        "menu.app.quit": "צא מ־TextMonitor",
         "menu.file": "קובץ",
         "menu.file.newWindow": "חלון חדש",
         "menu.file.newTab": "כרטיסייה חדשה",
@@ -34,6 +34,7 @@ extension Loc {
         "menu.view.snapRight": "הזז לקצה הימני של המסך",
         "menu.view.lens": "עדשת תרגום",
         "menu.view.bubble": "תרגם מתחת לסמן",
+        "menu.view.actions": "פעולות על טקסט",
         "menu.window": "חלון",
         "menu.window.showHide": "הצג / הסתר את החלונות",
         "menu.window.minimize": "מזער",

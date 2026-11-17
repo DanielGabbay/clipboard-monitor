@@ -12,11 +12,11 @@ enum Loc {
     }
 
     static let en: [String: String] = [
-        "menu.app.about": "About Clipboard Monitor",
+        "menu.app.about": "About TextMonitor",
         "menu.app.settings": "Settings…",
         "menu.app.loginItem": "Launch at Login",
         "menu.app.hide": "Hide",
-        "menu.app.quit": "Quit Clipboard Monitor",
+        "menu.app.quit": "Quit TextMonitor",
         "menu.file": "File",
         "menu.file.newWindow": "New Window",
         "menu.file.newTab": "New Tab",
@@ -43,6 +43,7 @@ enum Loc {
         "menu.view.snapRight": "Snap to Right Edge",
         "menu.view.lens": "Translation Lens",
         "menu.view.bubble": "Translate at Pointer",
+        "menu.view.actions": "Text Actions",
         "menu.window": "Window",
         "menu.window.showHide": "Show / Hide Monitors",
         "menu.window.minimize": "Minimize",

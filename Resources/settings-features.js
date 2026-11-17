@@ -30,6 +30,8 @@
       'settings.features.linkPreview.hint': 'A "Load preview" button on link cards. The page is fetched only when you click it.',
       'settings.features.copyRtl': 'Copy with RTL marks',
       'settings.features.copyRtl.hint': 'The Copy RTL button and menu entries (adds direction marks to Hebrew lines).',
+      'settings.features.actions': 'Text Actions',
+      'settings.features.actions.hint': 'Select text in any app and open a popover of actions on it. Options are in the Text Actions tab.',
       'settings.features.bubble': 'Translate at Pointer',
       'settings.features.bubble.hint': 'Point at a paragraph or select text in any app and press the shortcut: the translation opens next to it. Needs Accessibility access.',
       'settings.features.bubbleHotkey': 'Shortcut',
@@ -65,6 +67,8 @@
       'settings.features.linkPreview.hint': 'כפתור „טען תצוגה מקדימה” בכרטיס קישור. הדף נטען רק אחרי לחיצה עליו.',
       'settings.features.copyRtl': 'העתקה עם סימני RTL',
       'settings.features.copyRtl.hint': 'כפתור Copy RTL ופריטי התפריט (מוסיף סימני כיווניות לשורות בעברית).',
+      'settings.features.actions': 'פעולות על טקסט',
+      'settings.features.actions.hint': 'סמן טקסט בכל יישום ופתח חלונית פעולות עליו. האפשרויות בלשונית „פעולות על טקסט”.',
       'settings.features.bubble': 'תרגום מתחת לסמן',
       'settings.features.bubble.hint': 'הצבע על פסקה או סמן טקסט בכל יישום ולחץ על הקיצור: התרגום נפתח לידו. דורש גישת נגישות.',
       'settings.features.bubbleHotkey': 'קיצור',
@@ -118,6 +122,7 @@
     panel.appendChild(switchRow('compare'));
     panel.appendChild(switchRow('linkPreview'));
     panel.appendChild(switchRow('copyRtl'));
+    panel.appendChild(switchRow('actions'));
     panel.appendChild(switchRow('bubble'));
     const bubbleSub = el('div', 'f-sub f-hk'); bubbleSub.dataset.for = 'bubble';
     bubbleSub.appendChild(hotkeyRow('bubbleHotkey'));

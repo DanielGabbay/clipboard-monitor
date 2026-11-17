@@ -3,3 +3,4 @@ build/
 icon/*.png
 dev/preview.html
 .claude/worktrees/
+dev/actions-preview.html

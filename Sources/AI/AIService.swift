@@ -144,7 +144,7 @@ final class AIService {
             AIKeychain.delete(account: p.id)
             p.keyHint = ""
         } else if let key = (body["apiKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty {
-            if let err = AIKeychain.save(key, account: p.id, label: "Clipboard Monitor: \(p.name)") {
+            if let err = AIKeychain.save(key, account: p.id, label: "TextMonitor: \(p.name)") {
                 c.call("monitor.aiEvent", ["id": p.id, "kind": "save", "ok": false, "error": err, "time": Self.now()])
             } else {
                 p.keyHint = AIKeychain.hint(key)

@@ -1,0 +1,80 @@
+/* Text Actions popover (actions.html). The window is transparent; the card is the only painted part and its
+   shadow lives in the body padding (ActionsController.margin). Colors match bubble.css. */
+:root {
+  --bg: #fbfbfa; --fg: #1d1d1f; --muted: #6e6e73; --line: #e0e0dc; --accent: #2f6fde; --on-accent: #fff;
+  --danger: #c62828; --code-bg: #efefec; --hover: #0000000d; --chip: #2f6fde1f;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #232325; --fg: #ececec; --muted: #a1a1a6; --line: #3a3a3c; --accent: #5b8ff0; --on-accent: #fff;
+    --danger: #ff6b6b; --code-bg: #2f2f32; --hover: #ffffff14; --chip: #5b8ff033; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; background: transparent; overflow: hidden; }
+body {
+  padding: 10px; font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Arial Hebrew", sans-serif;
+  color: var(--fg); -webkit-user-select: none; user-select: none; cursor: default;
+}
+#card {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px; overflow: hidden auto;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .18), 0 1px 3px rgba(0, 0, 0, .12);
+  max-height: calc(100vh - 20px);
+}
+/* The views keep their natural height: the card's scrollHeight is what the panel is sized to (actions.js,
+   reportSize). The list and the result scroll inside their own caps instead. */
+#v-list, #v-work { display: flex; flex-direction: column; }
+.grow { flex: 1; }
+
+/* list view */
+.search { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); color: var(--accent); }
+.search input { flex: 1; min-width: 0; font: inherit; font-size: 15px; color: var(--fg); background: transparent; border: 0; outline: 0; padding: 0; }
+.search input::placeholder { color: var(--muted); }
+.chip {
+  margin: 8px 12px 2px; padding: 5px 10px; border-radius: 6px; background: var(--chip); color: var(--accent);
+  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; unicode-bidi: plaintext; text-align: start;
+}
+#list { padding: 6px; overflow-y: auto; max-height: 300px; overscroll-behavior: contain; }
+.item { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 6px; }
+.item svg { flex: none; color: var(--muted); }
+.item .label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item .key { color: var(--muted); font-size: 12px; direction: ltr; }
+.item:hover { background: var(--hover); }
+.item.on { background: var(--accent); color: var(--on-accent); }
+.item.on svg, .item.on .key { color: var(--on-accent); }
+.none { padding: 10px 12px; color: var(--muted); font-size: 12px; }
+
+/* work view */
+.head { display: flex; align-items: center; gap: 6px; padding: 8px 10px 8px 12px; border-bottom: 1px solid var(--line); }
+.name { font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.body { padding: 10px 14px 12px; overflow-y: auto; max-height: 420px; -webkit-user-select: text; user-select: text; cursor: auto; }
+.text { font-size: 14.5px; line-height: 1.55; }
+.text p { margin: 0 0 .6em; white-space: pre-wrap; unicode-bidi: plaintext; text-align: start; overflow-wrap: anywhere; }
+.text p:last-child { margin-bottom: 0; }
+.status { color: var(--muted); font-size: 12.5px; }
+.status:empty { display: none; }
+.status.error { color: var(--danger); }
+.text:not(:empty) + .status { margin-top: 6px; }
+.link { font: inherit; font-size: 12px; color: var(--accent); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+.body .link { margin-top: 6px; }
+
+/* shared */
+.foot { display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11.5px; }
+.keys { white-space: nowrap; }
+kbd { font: inherit; direction: ltr; unicode-bidi: isolate; }
+select {
+  font: inherit; font-size: 11.5px; color: var(--fg); background: transparent; border: 1px solid var(--line);
+  border-radius: 5px; padding: 2px 8px; max-width: 160px;
+}
+.tb {
+  color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 5px;
+  width: 24px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.tb:hover { color: var(--fg); border-color: var(--line); }
+html[dir=rtl] .flip { transform: scaleX(-1); transform-origin: center; }
+.btn {
+  font: inherit; font-size: 12.5px; color: var(--fg); background: transparent; border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 12px; cursor: pointer;
+}
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn:focus-visible, .tb:focus-visible, .link:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

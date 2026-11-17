@@ -5,7 +5,7 @@
   'use strict';
   I18N.register({
     en: {
-      'settings.about.tagline': 'The clipboard on screen, rendered properly, for mixed Hebrew and English text.',
+      'settings.about.tagline': 'Text from anywhere on your Mac: the clipboard on screen, translation, and actions on any selected text, with mixed Hebrew and English handled properly.',
       'settings.about.versionLine': 'Version {version} (build {build})',
       'settings.about.details': 'Details',
       'settings.about.commit': 'Commit',
@@ -27,7 +27,7 @@
       'settings.about.thirdParty': 'Includes marked (MIT) and highlight.js (BSD-3-Clause).',
     },
     he: {
-      'settings.about.tagline': 'הלוח על המסך, מוצג כמו שצריך, גם כשהטקסט מעורב בעברית ובאנגלית.',
+      'settings.about.tagline': 'טקסט מכל מקום במק: הלוח על המסך, תרגום ופעולות על כל טקסט מסומן, גם כשהוא מעורב בעברית ובאנגלית.',
       'settings.about.versionLine': 'גרסה {version} (build {build})',
       'settings.about.details': 'פרטים',
       'settings.about.commit': 'Commit',
@@ -88,7 +88,7 @@
 
   function plainInfo(i) {
     const lines = [
-      `Clipboard Monitor ${i.version} (${i.build})`,
+      `TextMonitor ${i.version} (${i.build})`,
       `Commit: ${i.commit || 'unknown'}${i.dirty ? ' (modified)' : ''}`,
       `Built: ${i.buildDate || 'unknown'}`,
       `macOS: ${i.os || 'unknown'}`,
@@ -123,7 +123,7 @@
     root.appendChild(wrap);
 
     const head = h('div', 'about-head');
-    head.appendChild(h('h2', 'about-name', 'Clipboard Monitor'));
+    head.appendChild(h('h2', 'about-name', 'TextMonitor'));
     const vl = h('div', 'about-version');
     if (info) vl.textContent = t('settings.about.versionLine', { version: info.version || '?', build: info.build || '?' });
     else vl.textContent = t('settings.about.loading');

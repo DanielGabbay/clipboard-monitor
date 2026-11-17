@@ -1,0 +1,19 @@
+/* Settings › Text Actions tab (settings-actions.js). */
+#settings .actions-tab [hidden] { display: none !important; }
+#settings .actions-tab .a-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 8px 0 2px;
+  padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; font-size: 12.5px; line-height: 1.4; }
+#settings .actions-tab .a-notice > span { flex: 1 1 160px; }
+#settings .actions-tab .hk { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+#settings .actions-tab .hk-rec { min-width: 74px; font-variant-numeric: tabular-nums; }
+#settings .actions-tab .hk-rec.on { border-color: var(--accent); color: var(--accent); }
+#settings .actions-tab .hk-clear, #settings .actions-tab .ca-del { border: 0; background: none; color: var(--muted);
+  font-size: 15px; line-height: 1; padding: 2px 6px; border-radius: 5px; }
+#settings .actions-tab .hk-clear:hover, #settings .actions-tab .ca-del:hover { color: var(--danger); background: var(--panel); }
+#settings .actions-tab .a-model-pick { max-width: 55%; }
+#settings .actions-tab .a-model-none a { color: var(--accent); text-decoration: none; }
+#settings .actions-tab .a-model-none a:hover { text-decoration: underline; }
+#settings .actions-tab .a-custom-hint { margin: 4px 0 8px; font-size: 12px; }
+#settings .actions-tab .ca { margin-bottom: 10px; }
+#settings .actions-tab .ca-head { display: flex; align-items: center; gap: 6px; }
+#settings .actions-tab .ca-head input { flex: 1; min-width: 0; }
+#settings .actions-tab .ca textarea { min-height: 52px; }

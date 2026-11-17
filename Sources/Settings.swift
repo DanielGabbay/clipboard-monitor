@@ -20,7 +20,7 @@ enum Settings {
         // features (flat "f.*" keys so the generic set path covers them)
         "f.translate": true, "f.ai": true, "f.smartCards": true,
         "f.smartJwt": true, "f.smartJson": true, "f.smartColor": true, "f.smartTime": true, "f.smartBase64": true, "f.smartLink": true,
-        "f.compare": true, "f.linkPreview": true, "f.copyRtl": true, "f.lens": true, "f.bubble": true,
+        "f.compare": true, "f.linkPreview": true, "f.copyRtl": true, "f.lens": true, "f.bubble": true, "f.actions": true,
         // translation
         "translateEngine": "apple",         // "apple" | "llm"
         "translateProvider": "",            // AI provider id
@@ -33,6 +33,13 @@ enum Settings {
         "lensMode": "reading",              // "reading" (translated document) | "overlay" (boxes over each line)
         "lensHotkey": "ctrl-opt-cmd-t",
         "bubbleHotkey": "ctrl-opt-t",
+        // Text Actions (popover on the selected text of any app)
+        "actionsHotkey": "ctrl+opt+KeyA",   // recorded shortcut ("off": none); see HotKey.parse
+        "actionsButton": true,              // floating button next to a fresh selection
+        "menuBarIcon": true,
+        "actionsProvider": "",              // empty: the translation model, else the first usable model
+        "actionsModel": "",
+        "customActions": "[]",              // JSON: [{id, name, prompt}]
         // AI
         "modelRefreshHours": 24,
     ]
@@ -58,3 +65,49 @@ let lensHotKeyPresets: [String: (key: Int, mods: Int)] = [
     "ctrl-opt-cmd-t": (kVK_ANSI_T, controlKey | optionKey | cmdKey),
     "ctrl-shift-t": (kVK_ANSI_T, controlKey | shiftKey),
 ]
+
+/// A global shortcut stored in settings: one of the presets above, or a recorded one written as modifiers and the
+/// key's KeyboardEvent.code joined by "+", e.g. "ctrl+opt+KeyA" (modifiers: ctrl, opt, shift, cmd; at least one
+/// of ctrl / opt / cmd). "off" and anything unreadable mean no shortcut.
+enum HotKey {
+    static let codes: [String: Int] = {
+        var m: [String: Int] = [
+            "Space": kVK_Space, "Enter": kVK_Return, "Tab": kVK_Tab, "Backquote": kVK_ANSI_Grave,
+            "Minus": kVK_ANSI_Minus, "Equal": kVK_ANSI_Equal, "BracketLeft": kVK_ANSI_LeftBracket,
+            "BracketRight": kVK_ANSI_RightBracket, "Semicolon": kVK_ANSI_Semicolon, "Quote": kVK_ANSI_Quote,
+            "Comma": kVK_ANSI_Comma, "Period": kVK_ANSI_Period, "Slash": kVK_ANSI_Slash, "Backslash": kVK_ANSI_Backslash,
+            "ArrowLeft": kVK_LeftArrow, "ArrowRight": kVK_RightArrow, "ArrowUp": kVK_UpArrow, "ArrowDown": kVK_DownArrow,
+        ]
+        let letters: [(String, Int)] = [
+            ("A", kVK_ANSI_A), ("B", kVK_ANSI_B), ("C", kVK_ANSI_C), ("D", kVK_ANSI_D), ("E", kVK_ANSI_E), ("F", kVK_ANSI_F),
+            ("G", kVK_ANSI_G), ("H", kVK_ANSI_H), ("I", kVK_ANSI_I), ("J", kVK_ANSI_J), ("K", kVK_ANSI_K), ("L", kVK_ANSI_L),
+            ("M", kVK_ANSI_M), ("N", kVK_ANSI_N), ("O", kVK_ANSI_O), ("P", kVK_ANSI_P), ("Q", kVK_ANSI_Q), ("R", kVK_ANSI_R),
+            ("S", kVK_ANSI_S), ("T", kVK_ANSI_T), ("U", kVK_ANSI_U), ("V", kVK_ANSI_V), ("W", kVK_ANSI_W), ("X", kVK_ANSI_X),
+            ("Y", kVK_ANSI_Y), ("Z", kVK_ANSI_Z),
+        ]
+        for (l, k) in letters { m["Key" + l] = k }
+        let digits = [kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9]
+        for (i, k) in digits.enumerated() { m["Digit\(i)"] = k }
+        let fkeys = [kVK_F1, kVK_F2, kVK_F3, kVK_F4, kVK_F5, kVK_F6, kVK_F7, kVK_F8, kVK_F9, kVK_F10, kVK_F11, kVK_F12]
+        for (i, k) in fkeys.enumerated() { m["F\(i + 1)"] = k }
+        return m
+    }()
+
+    static func parse(_ s: String) -> (key: Int, mods: Int)? {
+        if let p = hotKeyPresets[s] ?? lensHotKeyPresets[s] { return p }
+        let parts = s.split(separator: "+").map(String.init)
+        guard parts.count >= 2, let last = parts.last, let key = codes[last] else { return nil }
+        var mods = 0
+        for m in parts.dropLast() {
+            switch m {
+            case "ctrl": mods |= controlKey
+            case "opt": mods |= optionKey
+            case "shift": mods |= shiftKey
+            case "cmd": mods |= cmdKey
+            default: return nil
+            }
+        }
+        guard mods & (controlKey | optionKey | cmdKey) != 0 else { return nil }
+        return (key, mods)
+    }
+}

@@ -9,4 +9,9 @@ V="$V" perl -pe '
   s#(href|src)="([a-z][^":]*\.(?:css|js))"#$1="../Resources/$2?v=$ENV{V}"#g;
   s#(<script src="\.\./Resources/marked\.min\.js\?v=\d+"></script>)#<script src="mock-bridge.js?v=$ENV{V}"></script>\n$1#;
 ' ../Resources/index.html > preview.html
-echo "dev/preview.html"
+# The Text Actions popover, with its own fake bridge (mock-actions.js).
+V="$V" perl -pe '
+  s#(href|src)="([a-z][^":]*\.(?:css|js))"#$1="../Resources/$2?v=$ENV{V}"#g;
+  s#(<script src="\.\./Resources/i18n\.js\?v=\d+"></script>)#<script src="mock-actions.js?v=$ENV{V}"></script>\n$1#;
+' ../Resources/actions.html > actions-preview.html
+echo "dev/preview.html dev/actions-preview.html"

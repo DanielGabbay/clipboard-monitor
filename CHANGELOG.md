@@ -1,12 +1,23 @@
 # Changelog
 
-All notable changes to Clipboard Monitor are documented here.
+All notable changes to TextMonitor (formerly Clipboard Monitor) are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/). The version itself lives in the `VERSION` file.
 
 ## [1.1.0] - Unreleased
 
+### Changed
+- The app is now called TextMonitor: it works on text anywhere on the Mac, not only on the clipboard. Settings,
+  history, AI providers, stored keys and the Accessibility permission carry over (the bundle identifier and the
+  data folder are unchanged).
+
 ### Added
+- Text Actions: select text in any app and open a popover under it with actions on that text (improve writing,
+  fix spelling and grammar, simplify, paraphrase, summarize, explain, translate, your own actions, or a free
+  instruction). The result shows in the popover, with Replace (writes it over the selection) and Copy.
+- Four ways to open the popover: a shortcut you record yourself (⌃⌥A by default), a small button next to a fresh
+  selection, a menu bar icon, and right-click › Services › "TextMonitor: Text Actions".
+- Settings › Text Actions: the shortcut, the button, the menu bar icon, the model for actions, and your own actions.
 - Hebrew and English interface, chosen in Settings or following the macOS language. The window chrome, settings,
   context menu, cards and the macOS menus switch to right-to-left in Hebrew; clipboard content keeps its own
   per-block direction.

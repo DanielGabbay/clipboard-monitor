@@ -494,19 +494,19 @@ enum AXTextReader {
         }
     }
 
-    private static func copy(_ e: AXUIElement, _ name: String) -> CFTypeRef? {
+    static func copy(_ e: AXUIElement, _ name: String) -> CFTypeRef? {
         var v: CFTypeRef?
         return AXUIElementCopyAttributeValue(e, name as CFString, &v) == .success ? v : nil
     }
 
-    private static func param(_ e: AXUIElement, _ name: String, _ arg: CFTypeRef) -> CFTypeRef? {
+    static func param(_ e: AXUIElement, _ name: String, _ arg: CFTypeRef) -> CFTypeRef? {
         var v: CFTypeRef?
         return AXUIElementCopyParameterizedAttributeValue(e, name as CFString, arg, &v) == .success ? v : nil
     }
 
-    private static func role(of e: AXUIElement) -> String? { copy(e, kAXRoleAttribute) as? String }
+    static func role(of e: AXUIElement) -> String? { copy(e, kAXRoleAttribute) as? String }
 
-    private static func frame(of e: AXUIElement) -> CGRect? {
+    static func frame(of e: AXUIElement) -> CGRect? {
         if let f = cgRect(copy(e, "AXFrame")) { return f }
         guard let p = cgPoint(copy(e, kAXPositionAttribute)), let s = cgSize(copy(e, kAXSizeAttribute)) else { return nil }
         return CGRect(origin: p, size: s)
@@ -536,7 +536,7 @@ enum AXTextReader {
         return AXValueGetValue(ax, .cgSize, &s) ? s : nil
     }
 
-    private static func cfRange(_ v: CFTypeRef?) -> CFRange? {
+    static func cfRange(_ v: CFTypeRef?) -> CFRange? {
         guard let ax = axValue(v, .cfRange) else { return nil }
         var r = CFRange()
         return AXValueGetValue(ax, .cfRange, &r) ? r : nil

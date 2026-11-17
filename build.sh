@@ -1,28 +1,31 @@
 #!/bin/bash
-# Build Clipboard Monitor.app with the Xcode command line tools (no Xcode project needed).
+# Build TextMonitor.app (formerly Clipboard Monitor) with the Xcode command line tools (no Xcode project needed).
 #   ./build.sh            build into ./build
 #   ./build.sh install    build, copy to ~/Applications and launch
 #
 # Version: VERSION holds the marketing version; the build number is the git commit count. Both, plus the commit,
 # the build date and a "modified" flag, are written into the bundle's Info.plist (the source Info.plist is not touched).
 # Signing: $CODESIGN_IDENTITY if set, else the "Clipboard Monitor Dev" identity (scripts/make-signing-identity.sh)
-# when it exists, else ad-hoc.
+# when it exists, else ad-hoc. The identity, the bundle identifier and the data folder keep the app's first name,
+# so the Accessibility grant, the Keychain items, the settings and the history carry over.
 set -euo pipefail
 cd "$(dirname "$0")"
 command -v swiftc >/dev/null || { echo "swiftc not found: run  xcode-select --install"; exit 1; }
 
-APP="build/Clipboard Monitor.app"
+APP="build/TextMonitor.app"
+BIN=TextMonitor
 DEV_IDENTITY="Clipboard Monitor Dev"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # Every Swift file under Sources/ (main.swift holds the top-level entry point).
 SOURCES=(); while IFS= read -r f; do SOURCES+=("$f"); done < <(find Sources -name '*.swift' | sort)
-swiftc -O -o "$APP/Contents/MacOS/ClipboardMonitor" "${SOURCES[@]}" \
+swiftc -O -o "$APP/Contents/MacOS/$BIN" "${SOURCES[@]}" \
   -framework Cocoa -framework WebKit -framework Security -framework ApplicationServices 2>&1 | grep -v "^$" || true
-[ -x "$APP/Contents/MacOS/ClipboardMonitor" ] || { echo "build failed"; exit 1; }
+[ -x "$APP/Contents/MacOS/$BIN" ] || { echo "build failed"; exit 1; }
 cp Info.plist "$APP/Contents/"
 cp Resources/* "$APP/Contents/Resources/"
 cp CHANGELOG.md "$APP/Contents/Resources/"
+cp -R Localized/*.lproj "$APP/Contents/Resources/"   # ServicesMenu.strings: the Services menu title per language
 
 # ---- version stamp (bundle copy of Info.plist only) -----------------------------------------------------
 VERSION=$(tr -d '[:space:]' < VERSION)
@@ -80,10 +83,16 @@ echo "built: $APP v$VERSION ($BUILD)${SIGNED_WITH:+, signed: $SIGNED_WITH}"
 
 if [ "${1:-}" = "install" ]; then
   mkdir -p ~/Applications
-  pkill -x ClipboardMonitor 2>/dev/null && sleep 1 || true
-  rm -rf ~/Applications/"Clipboard Monitor.app"
+  QUIT=0
+  pkill -x "$BIN" 2>/dev/null && QUIT=1 || true
+  pkill -x ClipboardMonitor 2>/dev/null && QUIT=1 || true   # a running build from before the rename
+  [ "$QUIT" = 1 ] && sleep 1
+  rm -rf ~/Applications/TextMonitor.app
   cp -R "$APP" ~/Applications/
-  touch ~/Applications/"Clipboard Monitor.app"   # refresh the Dock/Finder icon cache
-  open ~/Applications/"Clipboard Monitor.app"
-  echo "installed: ~/Applications/Clipboard Monitor.app"
+  touch ~/Applications/TextMonitor.app   # refresh the Dock/Finder icon cache
+  open ~/Applications/TextMonitor.app
+  echo "installed: ~/Applications/TextMonitor.app"
+  if [ -d ~/Applications/"Clipboard Monitor.app" ]; then
+    echo "note: the old ~/Applications/Clipboard Monitor.app is still there (same app, old name); delete it when you no longer need it"
+  fi
 fi

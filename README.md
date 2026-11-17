@@ -1,7 +1,8 @@
-# Clipboard Monitor
+# TextMonitor
 
-A small macOS app that keeps the current clipboard on screen, rendered properly, with first-class support for
-mixed **Hebrew / English (RTL + LTR)** text. Park it on the side of a monitor and every copy shows up in it.
+A small macOS app for the text you work with, wherever it is: it keeps the current clipboard on screen, rendered
+properly, translates what you point at, and runs actions on any text you select in any app. First-class support
+for mixed **Hebrew / English (RTL + LTR)** text. Formerly Clipboard Monitor.
 
 ## Features
 
@@ -18,8 +19,14 @@ mixed **Hebrew / English (RTL + LTR)** text. Park it on the side of a monitor an
 - **Translate.** Automatic Hebrew ↔ English, or "Translate to…" any language in your list. Use an LLM provider and
   model of your choice (Markdown structure, code and URLs are kept), or Apple's on-device Translation framework
   (macOS 26+), which also serves as the fallback when the LLM call fails.
+- **Text Actions.** Select text in any app and open a popover right under it: improve the writing, fix spelling
+  and grammar, simplify, paraphrase, summarize, explain, translate, run one of your own actions, or type a free
+  instruction. The result shows in the same popover; **Replace** writes it over the selection and **Copy** puts it
+  on the clipboard. Open it with a shortcut you record (⌃⌥A by default), the small button that appears next to a
+  fresh selection, the menu bar icon, or right-click › Services › "TextMonitor: Text Actions". Actions use the AI
+  model you choose; translation also works with Apple's on-device engine. Password fields are never read.
 - **Translate at Pointer.** Point at a paragraph or select text in any app and press ⌃⌥T: the translation opens in
-  a small card next to it, with the original one click away, Copy, and "Open in Clipboard Monitor". The text comes
+  a small card next to it, with the original one click away, Copy, and "Open in TextMonitor". The text comes
   from the app's accessibility tree, so it is exact, Hebrew included, and nothing passes through the clipboard; it
   needs the Accessibility permission once. Works with native apps, Safari, Chrome and Electron apps.
 - **Translation Lens.** A floating panel (View › Translation Lens, ⌃⌥⌘T) that shows the text of the window under it
@@ -47,7 +54,7 @@ mixed **Hebrew / English (RTL + LTR)** text. Park it on the side of a monitor an
 Requires macOS 13+ and the Xcode command line tools (`xcode-select --install`). No Xcode project is needed.
 
 ```sh
-./build.sh            # builds "build/Clipboard Monitor.app"
+./build.sh            # builds "build/TextMonitor.app"
 ./build.sh install    # builds, copies to ~/Applications and launches
 ```
 

@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Clipboard Monitor</title>
+<title>TextMonitor</title>
 <link rel="stylesheet" href="hljs.css">
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="settings-features.css">
 <link rel="stylesheet" href="settings-translate.css">
+<link rel="stylesheet" href="settings-actions.css">
 <link rel="stylesheet" href="settings-ai.css">
 <link rel="stylesheet" href="settings-about.css">
 </head>
@@ -40,6 +41,7 @@
     <button role="tab" data-tab="content" data-i18n="settings.tab.content">Content</button>
     <button role="tab" data-tab="history" data-i18n="settings.tab.history">History</button>
     <button role="tab" data-tab="features" data-i18n="settings.tab.features">Features</button>
+    <button role="tab" data-tab="actions" data-i18n="settings.tab.actions">Text Actions</button>
     <button role="tab" data-tab="translate" data-i18n="settings.tab.translate">Translation</button>
     <button role="tab" data-tab="ai" data-i18n="settings.tab.ai">AI</button>
     <button role="tab" data-tab="about" data-i18n="settings.tab.about">About</button>
@@ -96,6 +98,7 @@
   </div>
 
   <div class="tab-panel" data-tab="features" role="tabpanel"></div>
+  <div class="tab-panel" data-tab="actions" role="tabpanel"></div>
   <div class="tab-panel" data-tab="translate" role="tabpanel"></div>
   <div class="tab-panel" data-tab="ai" role="tabpanel"></div>
   <div class="tab-panel" data-tab="about" role="tabpanel"></div>
@@ -113,6 +116,7 @@
 <script src="renderer.js"></script>
 <script src="settings.js"></script>
 <script src="settings-features.js"></script>
+<script src="settings-actions.js"></script>
 <script src="settings-translate.js"></script>
 <script src="settings-ai.js"></script>
 <script src="settings-about.js"></script>

@@ -27,6 +27,7 @@ enum AITimeout {
     static let models: TimeInterval = 15
     static let check: TimeInterval = 20
     static let translate: TimeInterval = 60
+    static let action: TimeInterval = 90
 }
 
 enum AIClient {
