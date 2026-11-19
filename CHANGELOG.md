@@ -4,7 +4,14 @@ All notable changes to TextMonitor (formerly Clipboard Monitor) are documented h
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/). The version itself lives in the `VERSION` file.
 
-## [1.1.0] - Unreleased
+## [1.2.0] - 2026-11-18
+- External integrations: `textmonitor://` URL scheme with `x-callback-url` support.
+- Model Context Protocol: built-in local MCP server (`--mcp`) exposing tools over JSON-RPC 2.0.
+- Fast CLI commands: `flip`, `rtl`, `show`, `history`, `action`, `translate`.
+- Vision OCR extraction on copied images and Lens screen reader.
+- Smart Cards for Cron expressions and curl commands.
+- Send to menu integration for Obsidian, WhatsApp, Telegram, Bear, Drafts, Things, and Shortcuts.
+- Quick edit mode (⌘E) for instant clipboard item editing.
 
 ### Changed
 - The app is now called TextMonitor: it works on text anywhere on the Mac, not only on the clipboard. Settings,
@@ -37,8 +44,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - "Translate to…" for any target language in the list, next to the automatic Hebrew ↔ English translation.
 - About tab with the version, build number, commit, build date, macOS version and the release notes.
 - Translate at Pointer (⌃⌥T from any app, or View › Translate at Pointer): point at a paragraph or select text in
-  any app, and its translation opens in a card next to it, with the original, Copy and "Open in Clipboard
-  Monitor". The text is read from the app's accessibility tree (exact, Hebrew included, no clipboard), which
+  any app, and its translation opens in a card next to it, with the original, Copy and "Open in TextMonitor". The text is read from the app's accessibility tree (exact, Hebrew included, no clipboard), which
   needs the Accessibility permission. Chrome and Electron apps (Slack, VS Code, Teams) are asked to expose their
   text. Password fields and ignored apps are skipped.
 - Translation Lens (⌃⌥⌘T, or View › Translation Lens, ⌥⌘T): a floating panel that shows the text of the window

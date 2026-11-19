@@ -5,7 +5,6 @@ import Cocoa
 // The action library is the "actionsList" setting: a JSON array of {id, name?, icon?, prompt?, replaces?}, in the
 // order the popover shows. An empty list means the defaults below. Built-in ids keep their localized name (the
 // page names them) and default prompt until the user changes them; any other id is the user's own action.
-// Actions made before the library existed ("customActions") are added to the defaults.
 //
 // Prompt placeholders, written {{ NAME }} (case and spaces do not matter):
 //   SELECTED TEXT  the selection. Without it the selection is sent on its own, after the prompt.
@@ -46,6 +45,14 @@ enum TextActions {
     code, URLs and names as they are.
     """
 
+    static let localIds: Set<String> = ["flipKeyboard", "wrapRtl", "cleanSpaces"]
+    static func isLocal(_ id: String) -> Bool { localIds.contains(id) }
+
+    static let validIcons: Set<String> = [
+        "improve", "fix", "simplify", "paraphrase", "summarize", "explain", "translate",
+        "custom", "chat", "mail", "doc", "idea", "list", "code", "quote", "tag",
+    ]
+
     static let defaults: [ActionDef] = [
         ActionDef(id: "improve", name: nil, icon: "improve", prompt: "Rewrite the user's text so it reads clearly and naturally. Keep its meaning, tone and language.", replaces: true),
         ActionDef(id: "fix", name: nil, icon: "fix", prompt: "Correct the spelling, grammar and punctuation of the user's text. Change nothing else: keep the wording, tone and language.", replaces: true),
@@ -53,6 +60,9 @@ enum TextActions {
         ActionDef(id: "paraphrase", name: nil, icon: "paraphrase", prompt: "Say the same thing as the user's text in different words. Keep its meaning, length and language.", replaces: true),
         ActionDef(id: "summarize", name: nil, icon: "summarize", prompt: "Summarize the user's text in a few short sentences, in the language of the text.", replaces: false),
         ActionDef(id: "explain", name: nil, icon: "explain", prompt: "Explain in plain words what the user's text means. Answer in {{ LANGUAGE }}.", replaces: false),
+        ActionDef(id: "flipKeyboard", name: nil, icon: "flipKeyboard", prompt: "", replaces: true),
+        ActionDef(id: "wrapRtl", name: nil, icon: "wrapRtl", prompt: "", replaces: true),
+        ActionDef(id: "cleanSpaces", name: nil, icon: "cleanSpaces", prompt: "", replaces: true),
     ]
 
     private static func json(_ key: String) -> [[String: Any]] {
@@ -61,17 +71,10 @@ enum TextActions {
         return arr
     }
 
-    /// The actions in popover order: the saved library, else the defaults plus older custom actions.
+    /// The actions in popover order: the saved library, else the defaults.
     static func library() -> [ActionDef] {
         let saved = json("actionsList")
-        guard !saved.isEmpty else {
-            let old = json("customActions").compactMap { d -> ActionDef? in
-                guard let id = d["id"] as? String else { return nil }
-                return ActionDef(id: "custom:" + id, name: d["name"] as? String ?? "", icon: "custom",
-                                 prompt: d["prompt"] as? String ?? "", replaces: true)
-            }
-            return defaults + old
-        }
+        guard !saved.isEmpty else { return defaults }
         return saved.compactMap { d in
             guard let id = d["id"] as? String, !id.isEmpty, id != "ask", !id.hasPrefix("translate:") else { return nil }
             let base = defaults.first { $0.id == id }
@@ -79,14 +82,16 @@ enum TextActions {
             let prompt = (d["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return ActionDef(id: id, name: name.isEmpty ? (base == nil ? "" : nil) : name,
                              icon: (d["icon"] as? String) ?? base?.icon ?? "custom",
-                             prompt: prompt.isEmpty ? (base?.prompt ?? "") : prompt,
+                             prompt: isLocal(id) ? "" : (prompt.isEmpty ? (base?.prompt ?? "") : prompt),
                              replaces: (d["replaces"] as? Bool) ?? base?.replaces ?? true)
         }
     }
 
     private static func dict(_ a: ActionDef) -> [String: Any] {
         ["id": a.id, "name": a.name ?? "", "icon": a.icon, "prompt": a.prompt, "replaces": a.replaces,
-         "builtin": defaults.contains { $0.id == a.id }]
+         "builtin": defaults.contains { $0.id == a.id },
+         "kind": isLocal(a.id) ? "local" : (a.name == nil ? "builtin" : "custom"),
+         "local": isLocal(a.id)]
     }
 
     /// The whole library for the settings editor, and the built-in defaults for "restore".
@@ -95,8 +100,9 @@ enum TextActions {
 
     /// The list the popover shows: usable library actions, then the translate targets.
     static func listForPage() -> [[String: Any]] {
-        var out: [[String: Any]] = library().filter { $0.name != "" && !$0.prompt.isEmpty }.map {
-            ["id": $0.id, "kind": $0.name == nil ? "builtin" : "custom", "title": $0.name ?? "", "icon": $0.icon, "replaces": $0.replaces]
+        var out: [[String: Any]] = library().filter { $0.name != "" && (isLocal($0.id) || !$0.prompt.isEmpty) }.map {
+            ["id": $0.id, "kind": isLocal($0.id) ? "local" : ($0.name == nil ? "builtin" : "custom"),
+             "title": $0.name ?? "", "icon": $0.icon, "replaces": $0.replaces]
         }
         let targets = Settings.string("translateTargets").split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -168,29 +174,209 @@ enum TextActions {
 
     // MARK: run
 
-    static func run(id: String, query: String?, text: String, app: String?) async throws -> ActionResult {
-        if id.hasPrefix("translate:") {
-            return ActionResult(text: try await translate(text, to: String(id.dropFirst("translate:".count))), model: "")
+    /// Instant zero-AI local transforms; returns nil when `id` is not a local action.
+    static func runLocal(id: String, text: String) -> String? {
+        switch id {
+        case "flipKeyboard": return TextTransforms.flipKeyboard(text)
+        case "wrapRtl": return TextTransforms.wrapRtl(text)
+        case "cleanSpaces": return TextTransforms.cleanWhitespace(text)
+        default: return nil
         }
-        let system: String, user: String
+    }
+
+    private static func prepareChat(id: String, query: String?, messages: [[String: String]]?, text: String, app: String?)
+        throws -> (providerId: String, model: String, modelLabel: String, system: String, messages: [[String: String]]) {
+        var cleaned: [[String: String]] = []
+        if let messages {
+            for msg in messages {
+                guard let role = msg["role"], role == "user" || role == "assistant",
+                      let content = msg["content"], !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+                cleaned.append(["role": role, "content": content])
+            }
+        }
+        let system: String, initialUser: String
         if id == "ask" {
-            guard let q = query?.trimmingCharacters(in: .whitespacesAndNewlines), !q.isEmpty else {
+            let q = query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !q.isEmpty || !cleaned.isEmpty else {
                 throw ActionFailure(code: "", message: "Type what to do with the text")
             }
             system = "The user gives an instruction and a text. Apply the instruction to the text. " + outputRule
-            user = "Instruction: \(q)\n\nText:\n\(text)"
+            initialUser = q.isEmpty ? text : "Instruction: \(q)\n\nText:\n\(text)"
         } else if let a = library().first(where: { $0.id == id }), !a.prompt.isEmpty {
-            (system, user) = compose(a.prompt, text: text, app: app)
+            (system, initialUser) = compose(a.prompt, text: text, app: app)
         } else {
             throw ActionFailure(code: "", message: "Unknown action")
         }
         guard let m = model() else { throw ActionFailure(code: "noModel", message: "No AI model is set up") }
-        let out = try await AIService.shared.chat(providerId: m.providerId, model: m.model, system: system, user: user,
+        var normalized: [[String: String]] = []
+        if !cleaned.isEmpty {
+            if cleaned.first?["role"] != "user" {
+                cleaned.insert(["role": "user", "content": initialUser], at: 0)
+            }
+            for msg in cleaned {
+                if let last = normalized.last, last["role"] == msg["role"] {
+                    normalized[normalized.count - 1]["content"] = (last["content"] ?? "") + "\n\n" + (msg["content"] ?? "")
+                } else {
+                    normalized.append(msg)
+                }
+            }
+        } else {
+            normalized = [["role": "user", "content": initialUser]]
+        }
+        let provider = AIService.shared.provider(m.providerId)?.name ?? ""
+        let modelLabel = provider.isEmpty ? m.model : provider + " / " + m.model
+        return (m.providerId, m.model, modelLabel, system, normalized)
+    }
+
+    static func runStream(id: String, query: String?, messages: [[String: String]]?, text: String, app: String?)
+        throws -> (stream: AsyncThrowingStream<String, Error>, model: String) {
+        let prep = try prepareChat(id: id, query: query, messages: messages, text: text, app: app)
+        let stream = AIService.shared.chatStream(providerId: prep.providerId, model: prep.model, system: prep.system,
+                                                 messages: prep.messages, maxTokens: nil, timeout: AITimeout.action)
+        return (stream, prep.modelLabel)
+    }
+
+    static func run(id: String, query: String?, text: String, app: String?) async throws -> ActionResult {
+        if let localOut = runLocal(id: id, text: text) {
+            return ActionResult(text: localOut, model: "")
+        }
+        if id.hasPrefix("translate:") {
+            return ActionResult(text: try await translate(text, to: String(id.dropFirst("translate:".count))), model: "")
+        }
+        let prep = try prepareChat(id: id, query: query, messages: nil, text: text, app: app)
+        let out = try await AIService.shared.chat(providerId: prep.providerId, model: prep.model, system: prep.system,
+                                                  user: prep.messages.first?["content"] ?? text,
                                                   maxTokens: nil, timeout: AITimeout.action)
         let result = out.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !result.isEmpty else { throw ActionFailure(code: "", message: "The model returned an empty answer") }
-        let provider = AIService.shared.provider(m.providerId)?.name ?? ""
-        return ActionResult(text: result, model: provider.isEmpty ? m.model : provider + " / " + m.model)
+        return ActionResult(text: result, model: prep.modelLabel)
+    }
+
+    // MARK: AI action builder
+
+    private static func scanJSONObject(in text: String) -> [String: Any]? {
+        var idx = text.startIndex
+        while idx < text.endIndex {
+            if text[idx] == "{" {
+                var depth = 0
+                var inString = false
+                var escaped = false
+                var j = idx
+                while j < text.endIndex {
+                    let ch = text[j]
+                    if inString {
+                        if escaped {
+                            escaped = false
+                        } else if ch == "\\" {
+                            escaped = true
+                        } else if ch == "\"" {
+                            inString = false
+                        }
+                    } else {
+                        if ch == "\"" {
+                            inString = true
+                        } else if ch == "{" {
+                            depth += 1
+                        } else if ch == "}" {
+                            depth -= 1
+                            if depth == 0 {
+                                let slice = String(text[idx...j])
+                                if let data = slice.data(using: .utf8),
+                                   let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                                    return obj
+                                }
+                                break
+                            }
+                        }
+                    }
+                    j = text.index(after: j)
+                }
+            }
+            idx = text.index(after: idx)
+        }
+        return nil
+    }
+
+    private static func extractJSONObject(from raw: String) -> [String: Any]? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let re = try? NSRegularExpression(pattern: "```[^\\n`]*\\r?\\n([\\s\\S]*?)```") {
+            let ns = trimmed as NSString
+            let matches = re.matches(in: trimmed, range: NSRange(location: 0, length: ns.length))
+            for m in matches where m.numberOfRanges > 1 {
+                let block = ns.substring(with: m.range(at: 1))
+                if let obj = scanJSONObject(in: block) { return obj }
+            }
+        }
+        return scanJSONObject(in: trimmed)
+    }
+
+    /// Generates or refines an action definition `{name, icon, prompt, replaces}` from a natural-language request.
+    static func generateAction(request: String, existing: [String: Any]? = nil) async throws -> [String: Any] {
+        let req = request.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !req.isEmpty else { throw ActionFailure(code: "", message: "Describe the action to create") }
+        guard let m = model() else { throw ActionFailure(code: "noModel", message: "No AI model is set up") }
+        let system = """
+        You design reusable text-transformation actions for a macOS utility.
+        Respond with ONLY a single JSON object (no markdown fences, no commentary) with these exact keys:
+        - "name": short concise title in the same language as the user's request (2–5 words).
+        - "icon": one of: improve, fix, simplify, paraphrase, summarize, explain, translate, custom, chat, mail, doc, idea, list, code, quote, tag.
+        - "prompt": clear instruction for an LLM to perform on selected text. Available variables: {{ SELECTED TEXT }}, {{ CLIPBOARD }}, {{ APP }}, {{ LANGUAGE }}, {{ DATE }}, {{ TIME }}. If {{ SELECTED TEXT }} is omitted, the selected text is passed separately as the user message.
+        - "replaces": boolean (true if the output is meant to replace the selected text, false if it is an explanation, summary, or commentary).
+        """
+        var user = "Requested action:\n\(req)"
+        if let existing {
+            let cleanExisting: [String: Any] = [
+                "name": (existing["name"] as? String) ?? "",
+                "icon": (existing["icon"] as? String) ?? "custom",
+                "prompt": (existing["prompt"] as? String) ?? "",
+                "replaces": (existing["replaces"] as? Bool) ?? true,
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: cleanExisting),
+               let jsonStr = String(data: data, encoding: .utf8) {
+                user = "Current action:\n\(jsonStr)\n\nRequested change:\n\(req)"
+            }
+        }
+        let raw = try await AIService.shared.chat(providerId: m.providerId, model: m.model, system: system, user: user,
+                                                  maxTokens: 1024, timeout: AITimeout.action)
+        guard let obj = extractJSONObject(from: raw),
+              let name = (obj["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
+              let prompt = (obj["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !prompt.isEmpty else {
+            throw ActionFailure(code: "", message: "Could not parse the generated action")
+        }
+        let rawIcon = (obj["icon"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "custom"
+        let icon = validIcons.contains(rawIcon) ? rawIcon : "custom"
+        let replaces = (obj["replaces"] as? Bool) ?? true
+        return ["name": name, "icon": icon, "prompt": prompt, "replaces": replaces]
+    }
+
+    /// Saves a generated/custom action into `actionsList` while preserving built-in defaults when `actionsList` was empty.
+    @discardableResult
+    static func saveCustomAction(_ body: [String: Any]) -> String? {
+        let d = (body["action"] as? [String: Any]) ?? body
+        let name = (d["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let prompt = (d["prompt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !name.isEmpty, !prompt.isEmpty else { return nil }
+        let rawIcon = (d["icon"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "custom"
+        let icon = validIcons.contains(rawIcon) ? rawIcon : "custom"
+        let replaces = (d["replaces"] as? Bool) ?? true
+
+        var items = library()
+        let givenId = (d["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !givenId.isEmpty, let idx = items.firstIndex(where: { $0.id == givenId }) {
+            items[idx] = ActionDef(id: givenId, name: name, icon: icon, prompt: isLocal(givenId) ? "" : prompt, replaces: replaces)
+        } else {
+            let newId = givenId.isEmpty
+                ? ("u" + String(Int(Date().timeIntervalSince1970 * 1000), radix: 36) + String(Int.random(in: 100...999)))
+                : givenId
+            items.append(ActionDef(id: newId, name: name, icon: icon, prompt: prompt, replaces: replaces))
+        }
+        let arr: [[String: Any]] = items.map {
+            ["id": $0.id, "name": $0.name ?? "", "icon": $0.icon, "prompt": $0.prompt, "replaces": $0.replaces]
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: arr),
+              let json = String(data: data, encoding: .utf8) else { return nil }
+        (NSApp.delegate as? AppDelegate)?.setSetting("actionsList", json)
+        return json
     }
 
     /// Translates line by line so the text keeps its paragraphs; lines already in the target language stay.

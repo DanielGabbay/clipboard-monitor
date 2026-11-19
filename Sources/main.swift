@@ -1,8 +1,8 @@
 // TextMonitor (formerly Clipboard Monitor): small always-visible windows that show the clipboard with correct
 // Hebrew/English (BiDi) rendering, and render Markdown / rich text / code. AppKit shell + one WKWebView per window
 // (or tab). Rendering and the settings panel live in Resources/ (index.html + *.js); Resources/bidi-fix.js is the
-// BiDi engine. Other Swift files: Settings, Localization, Translation, AI/*, Lens/* (Translation Lens, Translate at
-// Pointer), Actions/* (Text Actions on the selected text of any app), Version.
+// BiDi engine. Other Swift files: Settings, Localization, Translation, AI/*, Lens/* (Translation Lens),
+// Actions/* (Text Actions and Quick Translate on the selected or pointed text of any app), Version.
 import Cocoa
 import WebKit
 import Carbon
@@ -181,6 +181,21 @@ final class MonitorController: NSObject, NSWindowDelegate, WKNavigationDelegate 
         case "version": call("monitor.versionInfo", AppVersion.info())
         case let c where c.hasPrefix("ai."): AIService.shared.handle(c, body, from: self)
         case let c where c.hasPrefix("actionsLog."): MainActor.assumeIsolated { ActionLog.handle(c, body, from: self) }
+        case "actions.generate":
+            let req = (body["req"] as? String) ?? ""
+            let request = (body["request"] as? String) ?? ""
+            let existing = body["existing"] as? [String: Any]
+            Task { @MainActor [weak self] in
+                do {
+                    let action = try await TextActions.generateAction(request: request, existing: existing)
+                    self?.call("monitor.actionGenerated", ["req": req, "action": action])
+                } catch {
+                    let code = (error as? ActionFailure)?.code ?? ""
+                    self?.call("monitor.actionGenerated", ["req": req, "error": error.localizedDescription, "code": code])
+                }
+            }
+        case "saveCustomAction":
+            MainActor.assumeIsolated { _ = TextActions.saveCustomAction(body) }
         case "openTranslationSettings":
             if let url = URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension") { NSWorkspace.shared.open(url) }
         case "preview":
@@ -189,6 +204,32 @@ final class MonitorController: NSObject, NSWindowDelegate, WKNavigationDelegate 
         case "historyOp": app.controllers.forEach { $0.call("monitor.applyOp", body) }
         case "openItem":
             if let id = body["id"] as? String { app.makeMonitor(tabbedWith: nil, holdId: id) }
+        case "ocr":
+            let id = (body["id"] as? String) ?? ""
+            var dataUri = (body["image"] as? String) ?? ""
+            if dataUri.isEmpty, let last = app.lastItem, (last["id"] as? String) == id {
+                dataUri = (last["image"] as? String) ?? ""
+            }
+            Task { [weak self] in
+                var text: String?
+                if let comma = dataUri.firstIndex(of: ",") {
+                    let base64 = String(dataUri[dataUri.index(after: comma)...])
+                    if let data = Data(base64Encoded: base64) {
+                        text = OCRReader.recognizeText(from: data)
+                    }
+                }
+                await MainActor.run {
+                    if let text = text, !text.isEmpty {
+                        self?.call("monitor.ocrResult", ["id": id, "text": text])
+                    } else {
+                        self?.call("monitor.ocrResult", ["id": id, "error": "No text found"])
+                    }
+                }
+            }
+        case "sendTo":
+            if let appId = body["app"] as? String, let text = body["text"] as? String {
+                app.sendText(text, toApp: appId)
+            }
         default: break
         }
     }
@@ -207,7 +248,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     var lensHotKeyRef: EventHotKeyRef?
     var bubbleHotKeyRef: EventHotKeyRef?
     var actionsHotKeyRef: EventHotKeyRef?
+    var flipHotKeyRef: EventHotKeyRef?
     var hotKeyHandlerInstalled = false
+    private let flipQueue = DispatchQueue(label: "clipboard-monitor.flip.ax", qos: .userInitiated)
+    private var flipBusy = false
     /// Clipboard changes before this moment are not recorded (a temporary copy or paste made by Text Actions).
     var ignoreClipboardUntil = Date.distantPast
     /// The last app other than this one that was in front, and when this app last came to the front.
@@ -225,6 +269,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// ~/Library/Application Support/Clipboard Monitor (history.json, ai-providers.json). The folder keeps the
     /// app's first name so existing history and providers stay where they are.
     static let supportDir: URL = {
+        if let custom = ProcessInfo.processInfo.environment["TEXTMONITOR_SUPPORT_DIR"], !custom.isEmpty {
+            let dir = URL(fileURLWithPath: custom)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            return dir
+        }
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Clipboard Monitor", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -245,6 +294,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         registerHotKey()
         enableLoginItemOnFirstRun()
         AIService.shared.start()
+        IPCServer.shared.start()
+        NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleGetURL(_:withReplyEvent:)), forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
         trackFrontApp()
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
@@ -260,7 +311,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if controllers.isEmpty { _ = makeMonitor(tabbedWith: nil) } else { controllers.forEach { $0.window.makeKeyAndOrderFront(nil) } }
         return true
     }
-    func applicationWillTerminate(_ notification: Notification) { saveWindowCount() }
+    func applicationWillTerminate(_ notification: Notification) {
+        saveWindowCount()
+        IPCServer.shared.stop()
+    }
 
     // MARK: windows & tabs
 
@@ -415,10 +469,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         selfWrittenChange = pb.changeCount
     }
 
+    func pushExternalText(_ text: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents(); pb.setString(text, forType: .string)
+        lastChange = pb.changeCount
+        var history = readHistoryFile()
+        let newItem: [String: Any] = [
+            "id": UUID().uuidString,
+            "time": Date().timeIntervalSince1970 * 1000,
+            "kind": "text",
+            "text": text
+        ]
+        history.insert(newItem, at: 0)
+        saveHistory(history)
+        lastItem = newItem
+        controllers.forEach { $0.call("monitor.push", newItem) }
+    }
+
     func saveHistory(_ items: Any) {
         guard Settings.bool("keepHistory"), let data = try? JSONSerialization.data(withJSONObject: items) else { return }
         try? data.write(to: Self.historyURL, options: [.atomic])
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: Self.historyURL.path)
+    }
+
+    func readHistoryFile() -> [[String: Any]] {
+        guard let data = try? Data(contentsOf: Self.historyURL),
+              let items = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
+            return []
+        }
+        return items
     }
 
     func clearAllHistory() {
@@ -446,11 +525,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return s
     }
 
-    func stateForPage() -> [String: Any] { ["paused": paused] }
+    func stateForPage() -> [String: Any] {
+        ["paused": paused, "sendToApps": detectedSendToApps()]
+    }
 
     func broadcastSettings() {
         let s = settingsForPage()
-        controllers.forEach { $0.call("monitor.setSettings", s) }
+        controllers.forEach {
+            $0.call("monitor.setSettings", s)
+            $0.call("monitor.setState", self.stateForPage())
+        }
         // AppKit calls this on the main thread; the lens is main-actor isolated.
         MainActor.assumeIsolated { LensController.shared?.settingsChanged() }
     }
@@ -467,7 +551,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case "onTop", "allSpaces": controllers.forEach { $0.applyWindowPrefs() }
         case "theme": applyTheme()
         case "zoom": controllers.forEach { $0.web.pageZoom = Settings.double("zoom"); $0.sendInsets() }
-        case "hotkey", "lensHotkey", "bubbleHotkey", "actionsHotkey":
+        case "hotkey", "lensHotkey", "bubbleHotkey", "actionsHotkey", "flipHotkey":
             // A shortcut macOS refuses (taken by this app or another one) is not kept.
             if registerHotKey().contains(key) {
                 Settings.set(key, previous)
@@ -494,7 +578,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     // MARK: global hot keys: show / hide the monitor (id 1), Translation Lens (id 2), Translate at Pointer (id 3),
-    // Text Actions (id 4)
+    // Text Actions (id 4), Quick keyboard flip (id 5)
 
     /// Registers the shortcuts from settings again. Returns the setting keys whose shortcut macOS refused.
     @discardableResult
@@ -512,6 +596,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     case 2: d?.toggleLens(nil)
                     case 3: d?.toggleBubble(nil)
                     case 4: d?.toggleActions(nil)
+                    case 5: d?.flipSelectionInPlace(nil)
                     default: d?.toggleVisible()
                     }
                 }
@@ -519,8 +604,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }, 1, &spec, nil, nil)
             hotKeyHandlerInstalled = true
         }
-        for ref in [hotKeyRef, lensHotKeyRef, bubbleHotKeyRef, actionsHotKeyRef] { if let ref { UnregisterEventHotKey(ref) } }
-        hotKeyRef = nil; lensHotKeyRef = nil; bubbleHotKeyRef = nil; actionsHotKeyRef = nil
+        for ref in [hotKeyRef, lensHotKeyRef, bubbleHotKeyRef, actionsHotKeyRef, flipHotKeyRef] {
+            if let ref { UnregisterEventHotKey(ref) }
+        }
+        hotKeyRef = nil; lensHotKeyRef = nil; bubbleHotKeyRef = nil; actionsHotKeyRef = nil; flipHotKeyRef = nil
         var failed: [String] = []
         func register(_ key: String, _ id: UInt32) -> EventHotKeyRef? {
             guard let combo = HotKey.parse(Settings.string(key)) else { return nil }    // "off": none
@@ -534,7 +621,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         lensHotKeyRef = register("lensHotkey", 2)
         bubbleHotKeyRef = register("bubbleHotkey", 3)
         actionsHotKeyRef = register("actionsHotkey", 4)
+        flipHotKeyRef = register("flipHotkey", 5)
         return failed
+    }
+
+    /// Global quick keyboard flip (⌃⌥K by default): flips Hebrew <-> English layout of the selected text in place
+    /// without opening any window.
+    @objc func flipSelectionInPlace(_ sender: Any? = nil) {
+        guard !flipBusy else { return }
+        guard let front = NSWorkspace.shared.frontmostApplication,
+              front.processIdentifier != getpid(),
+              !isIgnored(front) else { return }
+        MainActor.assumeIsolated { SelectionWatcher.shared.hideButton() }
+        guard AXTextReader.trusted else { AXTextReader.requestTrust(); return }
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+        let m = NSEvent.mouseLocation
+        let pointer = CGPoint(x: m.x, y: primaryHeight - m.y)
+        let pid = front.processIdentifier
+        flipBusy = true
+        flipQueue.async { [weak self] in
+            let result = ActionsController.readSelection(frontPid: pid, pointer: pointer)
+            guard case .found(let sel) = result, sel.canReplace, sel.pid != 0 else {
+                DispatchQueue.main.async { self?.flipBusy = false }
+                return
+            }
+            let flipped = TextTransforms.flipKeyboard(sel.raw)
+            guard flipped != sel.raw else {
+                DispatchQueue.main.async { self?.flipBusy = false }
+                return
+            }
+            if SelectionWriter.replaceViaAccessibility(sel, with: flipped) {
+                DispatchQueue.main.async { self?.flipBusy = false }
+            } else {
+                DispatchQueue.main.async {
+                    SelectionWriter.replaceViaPaste(pid: sel.pid, with: flipped)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) { self?.flipBusy = false }
+                }
+            }
+        }
     }
 
     // MARK: Text Actions entry points: front app, clipboard quiet time, menu bar icon, Services menu
@@ -691,9 +815,147 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func snapRight(_ sender: Any?) { current?.placeOnRightEdge() }
     @objc func showAll(_ sender: Any?) { toggleVisible() }
     @objc func toggleLens(_ sender: Any?) { MainActor.assumeIsolated { LensController.toggle() } }
-    @objc func toggleBubble(_ sender: Any?) { MainActor.assumeIsolated { BubbleController.toggle() } }
+    @objc func toggleBubble(_ sender: Any?) { MainActor.assumeIsolated { ActionsController.toggleQuickTranslate() } }
     @objc func toggleActions(_ sender: Any?) { MainActor.assumeIsolated { ActionsController.toggle() } }
     @objc func openSettingsInFront(_ sender: Any?) { openSettings(nil); NSApp.activate(ignoringOtherApps: true) }
+
+    @objc func showMonitor(_ sender: Any?) {
+        NSApp.unhide(nil)
+        if controllers.isEmpty { _ = makeMonitor(tabbedWith: nil) }
+        controllers.first?.window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func detectedSendToApps() -> [[String: String]] {
+        let candidates: [(id: String, name: String, scheme: String)] = [
+            ("obsidian", "Obsidian", "obsidian://"),
+            ("whatsapp", "WhatsApp", "whatsapp://"),
+            ("telegram", "Telegram", "tg://"),
+            ("things", "Things", "things:///"),
+            ("bear", "Bear", "bear://"),
+            ("drafts", "Drafts", "drafts://"),
+            ("shortcuts", "Shortcuts", "shortcuts://")
+        ]
+        var found: [[String: String]] = []
+        for c in candidates {
+            if let url = URL(string: c.scheme), NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
+                found.append(["id": c.id, "name": c.name])
+            }
+        }
+        return found
+    }
+
+    func sendText(_ text: String, toApp appId: String) {
+        guard let encoded = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return }
+        let urlStr: String
+        switch appId {
+        case "obsidian":
+            urlStr = "obsidian://new?content=\(encoded)"
+        case "whatsapp":
+            urlStr = "whatsapp://send?text=\(encoded)"
+        case "telegram":
+            urlStr = "tg://msg?text=\(encoded)"
+        case "things":
+            urlStr = "things:///add?notes=\(encoded)"
+        case "bear":
+            urlStr = "bear://x-callback-url/create?text=\(encoded)"
+        case "drafts":
+            urlStr = "drafts://x-callback-url/create?text=\(encoded)"
+        case "shortcuts":
+            urlStr = "shortcuts://"
+        default:
+            return
+        }
+        if let url = URL(string: urlStr) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc func handleGetURL(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
+        if let urlStr = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
+           let url = URL(string: urlStr) {
+            handleURL(url)
+        }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for u in urls { handleURL(u) }
+    }
+
+    func handleURL(_ url: URL) {
+        guard url.scheme?.lowercased() == "textmonitor" else { return }
+        let host = url.host ?? ""
+        let path = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let action = host == "x-callback-url" ? path : (host.isEmpty ? path : host)
+
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let queryItems = components?.queryItems ?? []
+        func param(_ name: String) -> String? {
+            queryItems.first(where: { $0.name == name })?.value
+        }
+
+        switch action {
+        case "push":
+            if let text = param("text"), !text.isEmpty {
+                pushExternalText(text)
+            }
+        case "action":
+            let text = param("text") ?? ""
+            MainActor.assumeIsolated {
+                if !text.isEmpty {
+                    ActionsController.open(text: text, targetPid: 0)
+                } else {
+                    ActionsController.toggle()
+                }
+            }
+        case "translate":
+            if let text = param("text"), !text.isEmpty {
+                writeClipboard(text)
+            }
+            MainActor.assumeIsolated {
+                ActionsController.toggleQuickTranslate()
+            }
+        case "copy-rtl":
+            if let text = param("text"), !text.isEmpty {
+                writeClipboard(TextTransforms.wrapRtl(text))
+            }
+        case "flip-keyboard":
+            if let text = param("text"), !text.isEmpty {
+                writeClipboard(TextTransforms.flipKeyboard(text))
+            }
+        case "lens":
+            MainActor.assumeIsolated { LensController.open() }
+        case "bubble":
+            MainActor.assumeIsolated { ActionsController.toggleQuickTranslate() }
+        default:
+            break
+        }
+    }
+
+    // MARK: - NSServices Handlers
+
+    @objc func flipKeyboard(_ pboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        guard let text = pboard.string(forType: .string) ?? pboard.string(forType: .init(rawValue: "public.utf8-plain-text")),
+              !text.isEmpty else { return }
+        let flipped = TextTransforms.flipKeyboard(text)
+        pboard.clearContents()
+        pboard.setString(flipped, forType: .string)
+    }
+
+    @objc func wrapRtl(_ pboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        guard let text = pboard.string(forType: .string) ?? pboard.string(forType: .init(rawValue: "public.utf8-plain-text")),
+              !text.isEmpty else { return }
+        let wrapped = TextTransforms.wrapRtl(text)
+        pboard.clearContents()
+        pboard.setString(wrapped, forType: .string)
+    }
+
+    @objc func showInMonitor(_ pboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        guard let text = pboard.string(forType: .string) ?? pboard.string(forType: .init(rawValue: "public.utf8-plain-text")),
+              !text.isEmpty else { return }
+        writeClipboard(text)
+        showMonitor(nil)
+    }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
@@ -797,6 +1059,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         NSApp.mainMenu = main
     }
+}
+
+if CommandLine.arguments.count > 1 && !CommandLine.arguments[1].hasPrefix("-psn") {
+    let code = CLIRunner.run(arguments: CommandLine.arguments)
+    exit(code)
 }
 
 let app = NSApplication.shared

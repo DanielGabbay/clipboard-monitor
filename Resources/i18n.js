@@ -37,7 +37,7 @@
       root.querySelectorAll('[data-i18n-placeholder]').forEach((e) => { e.placeholder = t(e.dataset.i18nPlaceholder); });
     },
     /** For checks: keys present in English but missing in another language. */
-    missing(l) { return Object.keys(dicts.en).filter((k) => !(dicts[l] || {})[k]); },
+    missing(l) { const d = dicts[l] || {}; return Object.keys(dicts.en).filter((k) => d[k] == null); },
   };
   window.I18N = I18N;
   window.t = t;

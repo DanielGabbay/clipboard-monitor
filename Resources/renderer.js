@@ -8,7 +8,7 @@
   const MAX_SAVED_IMAGE = 400000; // data-URL chars; bigger images are shown but not kept across restarts
 
   const S = CM.S;   // live settings object shared with settings.js (mutated in place, never replaced)
-  const on = (name) => CM.feature(name);   // feature switches (Settings › Features)
+  const on = (name) => CM.feature(name);   // feature switches (Settings)
 
   // Strings added with the feature switches / translate-to work (the core strings are in i18n-core-*.js).
   I18N.register({
@@ -22,8 +22,8 @@
     he: {
       'tr.translateTo': 'תרגם ל…', 'tr.translateToLang': 'תרגם ל{lang}', 'tr.more.title': 'תרגום לשפה אחרת',
       'tr.auto': 'עברית ↔ אנגלית (אוטומטי)',
-      'tr.fallback': 'תרגום ה-AI נכשל ({error}), תורגם במכשיר.', 'tr.fallbackNoError': 'תרגום ה-AI נכשל, תורגם במכשיר.',
-      'tr.err.llm': 'תרגום ה-AI נכשל: {error}',
+      'tr.fallback': 'תרגום ה־AI נכשל ({error}), תורגם במכשיר.', 'tr.fallbackNoError': 'תרגום ה־AI נכשל, תורגם במכשיר.',
+      'tr.err.llm': 'תרגום ה־AI נכשל: {error}',
       'menu.translate': 'תרגם', 'menu.rawText': 'טקסט גולמי', 'history.label': 'היסטוריית הלוח',
     },
   });
@@ -38,6 +38,7 @@
     forceLtr: 'pre, kbd, samp', isolateInline: 'a, code, kbd, strong, em, b, i',
   };
   const detectDir = (t) => window.__bidiFix.detectDir(t, BIDI);
+  BIDI.detectLineDir = detectDir;
   const FONTS = {
     system: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Arial Hebrew", sans-serif',
     rounded: 'ui-rounded, "SF Pro Rounded", -apple-system, "Arial Hebrew", sans-serif',
@@ -167,10 +168,328 @@
   };
   const fullDate = (ms) => new Date(ms).toLocaleString(I18N.locale, { dateStyle: 'full', timeStyle: 'medium' });
 
-  // Each detector returns { title, build(card) } or null. Only single-token clips are inspected.
+  function parseCron(txt) {
+    const s = txt.trim();
+    const parts = s.split(/\s+/);
+    if (parts.length !== 5) return null;
+    const [min, hour, dom, mon, dow] = parts;
+
+    function validField(val, minVal, maxVal, names) {
+      if (val === '*') return true;
+      const sub = val.split(',');
+      for (const item of sub) {
+        if (!item) return false;
+        const slash = item.split('/');
+        if (slash.length > 2) return false;
+        if (slash.length === 2) {
+          const step = Number(slash[1]);
+          if (!Number.isInteger(step) || step <= 0 || step > maxVal) return false;
+        }
+        const range = slash[0];
+        if (range === '*') continue;
+        const dash = range.split('-');
+        if (dash.length > 2) return false;
+        if (dash.length === 2) {
+          const start = parseVal(dash[0], names);
+          const end = parseVal(dash[1], names);
+          if (start === null || end === null || start < minVal || end > maxVal || start > end) return false;
+        } else {
+          const v = parseVal(dash[0], names);
+          if (v === null || v < minVal || v > maxVal) return false;
+        }
+      }
+      return true;
+    }
+
+    function parseVal(v, names) {
+      if (/^\d+$/.test(v)) return Number(v);
+      if (names && names[v.toUpperCase()] !== undefined) return names[v.toUpperCase()];
+      return null;
+    }
+
+    const monNames = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+    const dowNames = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
+
+    if (!validField(min, 0, 59)) return null;
+    if (!validField(hour, 0, 23)) return null;
+    if (!validField(dom, 1, 31)) return null;
+    if (!validField(mon, 1, 12, monNames)) return null;
+    if (!validField(dow, 0, 7, dowNames)) return null;
+
+    return { min, hour, dom, mon, dow, original: s };
+  }
+
+  function describeCron(cron, lang) {
+    if (lang === 'he') {
+      let desc = '';
+      if (cron.min === '*') desc += 'בכל דקה';
+      else if (cron.min.startsWith('*/')) desc += `כל ${cron.min.slice(2)} דקות`;
+      else if (cron.hour !== '*' && !cron.hour.includes('-') && !cron.hour.startsWith('*/')) desc += `בשעה ${cron.hour.padStart(2, '0')}:${cron.min.padStart(2, '0')}`;
+      else desc += `בדקה ${cron.min}`;
+
+      if (cron.hour === '*') {}
+      else if (cron.hour.startsWith('*/')) desc += ` בכל ${cron.hour.slice(2)} שעות`;
+      else if (cron.hour.includes('-')) {
+        const [h1, h2] = cron.hour.split('-');
+        desc += ` בין השעות ${h1.padStart(2, '0')}:00 ל־${h2.padStart(2, '0')}:00`;
+      }
+
+      if (cron.dom !== '*') {
+        if (cron.dom === '29' && cron.mon === '2') desc += ' ב־29 בפברואר';
+        else desc += ` ביום ${cron.dom} לחודש`;
+      }
+
+      if (cron.mon !== '*' && !(cron.dom === '29' && cron.mon === '2')) {
+        const heMonths = ['', 'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+        desc += ` בחודש ${heMonths[Number(cron.mon)] || cron.mon}`;
+      }
+
+      if (cron.dow !== '*') {
+        const heDows = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+        if (cron.dow === '1-5') desc += ', בימים שני עד שישי';
+        else if (cron.dow === '0,6' || cron.dow === '6,0' || cron.dow === '5,6') desc += ', בסוף השבוע';
+        else if (cron.dow.includes('-')) {
+          const [d1, d2] = cron.dow.split('-');
+          desc += `, בימים ${heDows[Number(d1)] || d1} עד ${heDows[Number(d2)] || d2}`;
+        } else {
+          desc += `, ביום ${heDows[Number(cron.dow)] || cron.dow}`;
+        }
+      }
+      return desc.trim();
+    } else {
+      let desc = '';
+      if (cron.min === '*') desc += 'Every minute';
+      else if (cron.min.startsWith('*/')) desc += `Every ${cron.min.slice(2)} minutes`;
+      else if (cron.hour !== '*' && !cron.hour.includes('-') && !cron.hour.startsWith('*/')) desc += `At ${cron.hour.padStart(2, '0')}:${cron.min.padStart(2, '0')}`;
+      else desc += `At minute ${cron.min}`;
+
+      if (cron.hour === '*') {}
+      else if (cron.hour.startsWith('*/')) desc += ` every ${cron.hour.slice(2)} hours`;
+      else if (cron.hour.includes('-')) {
+        const [h1, h2] = cron.hour.split('-');
+        desc += ` between ${h1.padStart(2, '0')}:00 and ${h2.padStart(2, '0')}:00`;
+      }
+
+      if (cron.dom !== '*') {
+        if (cron.dom === '29' && cron.mon === '2') desc += ' on February 29';
+        else desc += ` on day ${cron.dom} of the month`;
+      }
+
+      if (cron.mon !== '*' && !(cron.dom === '29' && cron.mon === '2')) {
+        const enMonths = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        desc += ` in ${enMonths[Number(cron.mon)] || cron.mon}`;
+      }
+
+      if (cron.dow !== '*') {
+        const enDows = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        if (cron.dow === '1-5') desc += ', Monday through Friday';
+        else if (cron.dow === '0,6' || cron.dow === '6,0') desc += ', on weekends';
+        else if (cron.dow.includes('-')) {
+          const [d1, d2] = cron.dow.split('-');
+          desc += `, ${enDows[Number(d1)] || d1} through ${enDows[Number(d2)] || d2}`;
+        } else {
+          desc += `, on ${enDows[Number(cron.dow)] || cron.dow}`;
+        }
+      }
+      return desc.trim();
+    }
+  }
+
+  function expandCronField(val, minVal, maxVal, names) {
+    const set = new Set();
+    function parseVal(v) {
+      if (/^\d+$/.test(v)) return Number(v);
+      if (names && names[v.toUpperCase()] !== undefined) return names[v.toUpperCase()];
+      return Number(v);
+    }
+    const sub = val.split(',');
+    for (const item of sub) {
+      const slash = item.split('/');
+      const step = slash[1] ? Number(slash[1]) : 1;
+      const range = slash[0];
+      let start = minVal, end = maxVal;
+      if (range !== '*') {
+        const dash = range.split('-');
+        if (dash.length === 2) {
+          start = parseVal(dash[0]);
+          end = parseVal(dash[1]);
+        } else {
+          start = end = parseVal(dash[0]);
+        }
+      }
+      for (let i = start; i <= end; i += step) {
+        set.add(i);
+      }
+    }
+    return set;
+  }
+
+  function nextCronRuns(cron, count = 3, startDate = new Date()) {
+    const monNames = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+    const dowNames = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
+
+    const minSet = expandCronField(cron.min, 0, 59);
+    const hourSet = expandCronField(cron.hour, 0, 23);
+    const domSet = expandCronField(cron.dom, 1, 31);
+    const monSet = expandCronField(cron.mon, 1, 12, monNames);
+    const dowSet = expandCronField(cron.dow, 0, 7, dowNames);
+    if (dowSet.has(7)) dowSet.add(0);
+
+    const starDom = cron.dom === '*';
+    const starDow = cron.dow === '*';
+
+    const results = [];
+    let cur = new Date(startDate.getTime());
+    cur.setSeconds(0, 0);
+    cur.setMinutes(cur.getMinutes() + 1);
+
+    if (cron.dom === '29' && cron.mon === '2') {
+      let year = cur.getFullYear();
+      while (results.length < count && year < 2100) {
+        const isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+        if (isLeap) {
+          for (const h of [...hourSet].sort((a, b) => a - b)) {
+            for (const m of [...minSet].sort((a, b) => a - b)) {
+              const cand = new Date(year, 1, 29, h, m, 0, 0);
+              if (cand.getTime() > startDate.getTime()) {
+                results.push(cand);
+                if (results.length >= count) break;
+              }
+            }
+            if (results.length >= count) break;
+          }
+        }
+        year++;
+      }
+      return results;
+    }
+
+    let limit = 50000;
+    while (results.length < count && limit-- > 0) {
+      const mon = cur.getMonth() + 1;
+      if (!monSet.has(mon)) {
+        cur.setMonth(cur.getMonth() + 1, 1);
+        cur.setHours(0, 0, 0, 0);
+        continue;
+      }
+      const dom = cur.getDate();
+      const dow = cur.getDay();
+      const domMatch = domSet.has(dom);
+      const dowMatch = dowSet.has(dow);
+      const dayMatch = (starDom && starDow) ? true : (starDom ? dowMatch : (starDow ? domMatch : (domMatch || dowMatch)));
+      if (!dayMatch) {
+        cur.setDate(cur.getDate() + 1);
+        cur.setHours(0, 0, 0, 0);
+        continue;
+      }
+      const hr = cur.getHours();
+      if (!hourSet.has(hr)) {
+        cur.setHours(cur.getHours() + 1, 0, 0, 0);
+        continue;
+      }
+      const mn = cur.getMinutes();
+      if (minSet.has(mn)) {
+        results.push(new Date(cur.getTime()));
+      }
+      cur.setMinutes(cur.getMinutes() + 1);
+    }
+    return results;
+  }
+
+  function parseCurl(txt) {
+    const s = txt.trim();
+    if (!/^curl(?:\s|$)/i.test(s)) return null;
+    const clean = s.replace(/\\\r?\n\s*/g, ' ');
+
+    const tokens = [];
+    const re = /[^\s"']+|"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'/g;
+    let match;
+    while ((match = re.exec(clean)) !== null) {
+      if (match[1] !== undefined) tokens.push(match[1].replace(/\\(["\\])/g, '$1'));
+      else if (match[2] !== undefined) tokens.push(match[2].replace(/\\(['\\])/g, '$1'));
+      else tokens.push(match[0]);
+    }
+
+    if (tokens.length < 2) return null;
+
+    let method = '';
+    let url = '';
+    const headers = [];
+    let body = '';
+    let auth = '';
+
+    for (let i = 1; i < tokens.length; i++) {
+      const t = tokens[i];
+      if (t === '-X' || t === '--request') {
+        method = (tokens[++i] || '').toUpperCase();
+      } else if (t === '-H' || t === '--header') {
+        if (tokens[i + 1]) headers.push(tokens[++i]);
+      } else if (t === '-d' || t === '--data' || t === '--data-raw' || t === '--data-binary' || t === '--data-urlencode') {
+        body = tokens[++i] || '';
+        if (!method) method = 'POST';
+      } else if (t === '-u' || t === '--user') {
+        auth = tokens[++i] || '';
+      } else if (t === '--url') {
+        url = tokens[++i] || '';
+      } else if (!t.startsWith('-') && !url) {
+        url = t;
+      }
+    }
+
+    if (!url) return null;
+    if (!method) method = 'GET';
+
+    return { method, url, headers, body, auth };
+  }
+
+  // Each detector returns { title, build(card) } or null.
   function detectSmart(item) {
     const txt = (item.text || '').trim();
     if (!txt || txt.length > 200000 || !on('smartCards')) return null;
+    // Cron
+    if (on('smartCron')) {
+      const cron = parseCron(txt);
+      if (cron) return { kind: 'cron', title: t('smart.cron'), build: (card) => {
+        const desc = describeCron(cron, I18N.lang);
+        card.appendChild(elt('div', 'big cron-desc', desc));
+        card.appendChild(elt('div', 'sub', I18N.lang === 'he' ? 'ריצות קרובות' : 'Upcoming runs'));
+        const runs = nextCronRuns(cron, 3, new Date(item.time || Date.now()));
+        const runsList = elt('ul', 'cron-runs');
+        for (const r of runs) {
+          const li = elt('li', '', fullDate(r.getTime()));
+          runsList.appendChild(li);
+        }
+        card.appendChild(runsList);
+      } };
+    }
+    // curl
+    if (on('smartCurl')) {
+      const c = parseCurl(txt);
+      if (c) return { kind: 'curl', title: t('smart.curl'), build: (card) => {
+        const kv = [
+          ['Method', c.method],
+          ['URL', c.url],
+        ];
+        if (c.auth) kv.push(['Auth', c.auth]);
+        for (const h of c.headers) {
+          const idx = h.indexOf(':');
+          if (idx > -1) {
+            kv.push([h.slice(0, idx).trim(), h.slice(idx + 1).trim()]);
+          } else {
+            kv.push(['Header', h]);
+          }
+        }
+        card.appendChild(kvTable(kv));
+        if (c.body) {
+          card.appendChild(elt('div', 'sub', 'Body'));
+          const pre = elt('pre', 'curl-body');
+          const code = elt('code');
+          code.textContent = c.body;
+          pre.appendChild(code);
+          card.appendChild(pre);
+        }
+      } };
+    }
     const single = !/\s/.test(txt);
     // JWT
     if (on('smartJwt') && single && /^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*$/.test(txt)) {
@@ -470,6 +789,7 @@
   let picking = false;     // next history click picks the item to compare with
   let view = 'original';   // 'original' | 'translation' for the shown item
   let lastShown = null;
+  let editing = false;     // quick-edit mode (Cmd+E)
 
   const hasTr = (it) => on('translate') && !!(curTr(it) && curTr(it).text);
   // Text the window currently shows (the translation when that view is on); Copy / Copy RTL use it.
@@ -501,10 +821,9 @@
     };
     add(t('tr.auto'), '');
     for (const code of targetList()) add(langName(code), code);
-    menuKeys(m, { escape: () => close(true), tab: () => close(false) });
     wrap.appendChild(m);
     if (opener) opener.setAttribute('aria-expanded', 'true');
-    const first = m.querySelector('.mi'); if (first) first.focus();
+    CM.menuKeys(m, { directOnly: true, onClose: () => close(true), onTab: () => close(false) });
   }
   document.addEventListener('mousedown', (e) => {
     if (!(e.target.closest && e.target.closest('.tr-split'))) document.querySelectorAll('.tr-menu').forEach((m) => m.remove());
@@ -589,11 +908,60 @@
     const c = $('#content');
     c.innerHTML = '';
     const item = history[shownIndex];
-    if (item !== lastShown) { lastShown = item; view = 'original'; }
+    if (item !== lastShown) { lastShown = item; view = 'original'; editing = false; }
     if (compareWith && (compareWith === item || !history.includes(compareWith))) compareWith = null;
     document.body.classList.toggle('picking', picking);
-    if (!item) { c.innerHTML = '<div class="empty"></div>'; c.firstChild.textContent = t('empty.copy'); updateHeader(); return; }
+    if (picking) {
+      const banner = elt('div', 'compare-banner note', t('compare.picking'));
+      banner.setAttribute('role', 'status');
+      c.appendChild(banner);
+    }
+    if (!item) {
+      c.innerHTML = '<div class="empty"></div>';
+      const activeHks = [];
+      if (S.hotkey && S.hotkey !== 'off') activeHks.push(CM.hotkeyLabel(S.hotkey));
+      if (S.flipHotkey && S.flipHotkey !== 'off') activeHks.push(CM.hotkeyLabel(S.flipHotkey));
+      const hkStr = activeHks.length ? ' (' + activeHks.join(', ') + ')' : '';
+      c.firstChild.textContent = t('empty.copy') + hkStr;
+      updateHeader();
+      return;
+    }
     const fmt = item.fmt;
+    if (editing && item.text && fmt !== 'image' && fmt !== 'secret' && fmt !== 'other') {
+      const wrap = elt('div', 'quick-edit');
+      const ta = elt('textarea', 'qe-input');
+      ta.value = item.text;
+      const acts = elt('div', 'qe-actions');
+      const saveBtn = elt('button', 'btn primary', t('edit.save'));
+      const cancelBtn = elt('button', 'btn', t('edit.cancel'));
+      saveBtn.onclick = () => {
+        item.text = ta.value;
+        item.fmt = classify(item);
+        editing = false;
+        native({ cmd: 'copy', text: item.text });
+        render();
+      };
+      cancelBtn.onclick = () => {
+        editing = false;
+        render();
+      };
+      ta.onkeydown = (e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          editing = false;
+          render();
+        } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          e.stopPropagation();
+          saveBtn.click();
+        }
+      };
+      acts.append(saveBtn, cancelBtn);
+      wrap.append(ta, acts);
+      c.appendChild(wrap);
+      setTimeout(() => ta.focus(), 0);
+      updateHeader();
+      return;
+    }
     if (compareWith && item.text && compareWith.text) {
       const [older, newer] = compareWith.time <= item.time ? [compareWith, item] : [item, compareWith];
       renderDiff(c, older, newer);
@@ -602,6 +970,69 @@
         c.innerHTML = '<div class="imgwrap"><img alt=""></div><p class="note"></p>';
         c.querySelector('img').src = item.image;
         c.querySelector('.note').textContent = t('content.image', { size: item.size || '' });
+        const ocrBtn = elt('button', 'btn ocr-btn', t('content.ocr'));
+        ocrBtn.onclick = () => {
+          ocrBtn.textContent = t('content.ocrExtracting');
+          native({ cmd: 'ocr', id: keyOf(item), image: item.image });
+        };
+        c.appendChild(ocrBtn);
+
+        if (item.ocrText) {
+          const resBox = elt('div', 'ocr-result');
+          const displayText = item.ocrTranslation || item.ocrText;
+          const lines = displayText.split('\n');
+          for (const line of lines) {
+            const p = elt('p', 'ocr-line', line);
+            p.setAttribute('dir', detectDir(line));
+            resBox.appendChild(p);
+          }
+          const acts = elt('div', 'ocr-actions');
+          const cp = elt('button', 'btn', t('menu.copy'));
+          cp.onclick = () => {
+            native({ cmd: 'copy', text: displayText });
+            toast(t('toast.copied'));
+          };
+          const tr = elt('button', 'btn', t('menu.translate'));
+          tr.onclick = () => {
+            const req = String(++translateReq);
+            item.translations = item.translations || {};
+            item.trKey = 'auto';
+            item.translations['auto'] = { pending: true, req, sig: engineSig() };
+            native({ cmd: 'translate', text: item.ocrText, req });
+          };
+          acts.append(cp, tr);
+          if (Array.isArray(S.sendToApps) && S.sendToApps.length > 0) {
+            const stWrap = elt('span', 'tr-split ocr-st-wrap');
+            const stBtn = elt('button', 'btn', t('menu.sendTo'));
+            stBtn.onclick = (e) => {
+              e.stopPropagation();
+              const existing = stWrap.querySelector('.tr-menu');
+              if (existing) { existing.remove(); return; }
+              const m = elt('div', 'tr-menu');
+              m.setAttribute('role', 'menu');
+              m.setAttribute('aria-label', t('menu.sendTo'));
+              for (const app of S.sendToApps) {
+                const row = menuItem(app.name || app.id);
+                row.onclick = (ev) => {
+                  ev.stopPropagation();
+                  m.remove();
+                  native({ cmd: 'sendTo', app: app.id, text: item.ocrText });
+                };
+                m.appendChild(row);
+              }
+              stWrap.appendChild(m);
+              CM.menuKeys(m, { directOnly: true, onClose: () => m.remove() });
+              const firstItem = m.querySelector('[role="menuitem"]');
+              if (firstItem) firstItem.focus();
+            };
+            stWrap.appendChild(stBtn);
+            acts.appendChild(stWrap);
+          }
+          resBox.appendChild(acts);
+          c.appendChild(resBox);
+        } else if (item.ocrError) {
+          c.appendChild(elt('div', 'note ocr-error', item.ocrError));
+        }
       } else {
         c.innerHTML = '<div class="empty"></div>';
         c.firstChild.textContent = '🖼 ' + t('content.imageHidden', { size: item.size || '' });
@@ -757,8 +1188,8 @@
     }
   }
 
-  // Items are matched by content across windows (ids can differ between windows' histories).
-  const keyOf = (it) => it.text || it.image || it.id || String(it.time);
+  // Items are matched across windows by id (falling back to String(time) for legacy entries).
+  const keyOf = (it) => it.id || String(it.time);
   // Keep pinned items and the shown item; drop the oldest unpinned ones beyond the history size.
   function trim() {
     const max = Number(S.maxHistory) || 50;
@@ -788,7 +1219,7 @@
     document.documentElement.style.setProperty('--font', FONTS[S.font] || FONTS.system);
     trim();
     // Re-render only when something that affects rendering changed.
-    const sig = [S.detect, S.ratio, S.rich, S.markdown, S.highlight, S.images, I18N.lang,
+    const sig = [S.detect, S.ratio, S.rich, S.markdown, S.highlight, S.images, I18N.lang, S.hotkey,
       Object.keys(S).filter((k) => k.startsWith('f.')).map((k) => S[k]).join(',')].join('|');
     if (sig !== renderedWith) {
       renderedWith = sig;
@@ -804,31 +1235,7 @@
   function op(kind, it) { native({ cmd: 'historyOp', op: kind, key: keyOf(it) }); }
 
   // ---- menus: keyboard ------------------------------------------------------------------------------
-  // Arrow keys / Home / End move focus over the box's own .mi rows, Enter / Space activate, Escape and Tab call
-  // the handlers. `forward` (ArrowRight, ArrowLeft in RTL) opens a submenu, `back` (the other arrow) leaves one.
-  function menuKeys(box, { escape, tab, forward, back }) {
-    box.addEventListener('keydown', (e) => {
-      const list = [...box.querySelectorAll(':scope > .mi')];
-      const i = list.indexOf(document.activeElement);
-      const fwdKey = I18N.dir === 'rtl' ? 'ArrowLeft' : 'ArrowRight', backKey = I18N.dir === 'rtl' ? 'ArrowRight' : 'ArrowLeft';
-      const go = (k) => { if (list.length) list[(k + list.length) % list.length].focus(); };
-      switch (e.key) {
-        case 'ArrowDown': go(i + 1); break;
-        case 'ArrowUp': go(i < 0 ? -1 : i - 1); break;
-        case 'Home': go(0); break;
-        case 'End': go(-1); break;
-        case 'Enter': case ' ': if (list[i]) list[i].click(); break;
-        case 'Escape': if (escape) escape(); break;
-        case 'Tab': if (tab) tab(); break;
-        default:
-          if (e.key === fwdKey && forward && list[i] && list[i].getAttribute('aria-haspopup')) forward(list[i]);
-          else if (e.key === backKey && back) back();
-          else return;
-      }
-      e.preventDefault(); e.stopPropagation();
-    });
-  }
-  // One menu row: role menuitem, focusable by script only (the menu moves focus itself).
+  // One menu row: role menuitem, focusable by script only (CM.menuKeys moves focus itself).
   function menuItem(labelText, cls) {
     const d = elt('div', 'mi' + (cls ? ' ' + cls : ''), labelText);
     d.setAttribute('role', 'menuitem'); d.tabIndex = -1;
@@ -901,25 +1308,32 @@
     sub.parentItem = parentItem;
     ctx.appendChild(sub); subMenu = sub;
     parentItem.setAttribute('aria-expanded', 'true');
-    menuKeys(sub, {
-      escape: () => { closeSub(); parentItem.focus(); }, back: () => { closeSub(); parentItem.focus(); },
-      tab: () => closeMenu(true),
-    });
     const pr = parentItem.getBoundingClientRect(), sr = sub.getBoundingClientRect();
     const rightFits = pr.right + sr.width <= innerWidth - 4, leftFits = pr.left - sr.width >= 4;
     const toRight = I18N.dir === 'rtl' ? !leftFits && rightFits : rightFits || !leftFits;
     const left = toRight ? pr.right + 2 : pr.left - sr.width - 2;
     sub.style.left = Math.max(4, Math.min(left, innerWidth - sr.width - 4)) + 'px';
     sub.style.top = Math.max(4, Math.min(pr.top - 5, innerHeight - sr.height - 4)) + 'px';
-    if (focusFirst) { const f = sub.querySelector('.mi'); if (f) f.focus(); }
+    CM.menuKeys(sub, {
+      directOnly: true,
+      focusFirst: !!focusFirst,
+      onClose: () => { closeSub(); parentItem.focus(); },
+      onBack: () => { closeSub(); parentItem.focus(); },
+      onTab: () => closeMenu(true),
+    });
   }
-  menuKeys(ctx, {
-    escape: () => closeMenu(true), tab: () => closeMenu(true),
-    forward: (item) => openSub(item, item.subEntries, true),
+  CM.menuKeys(ctx, {
+    directOnly: true,
+    focusFirst: false,
+    onClose: () => closeMenu(true),
+    onTab: () => closeMenu(true),
+    onForward: (item) => openSub(item, item.subEntries, true),
   });
   function copyText(text, rtl) { native({ cmd: 'copy', text: rtl ? wrapRtl(text) : text }); toast(rtl ? t('toast.copiedRtl') : t('toast.copied')); }
   function itemEntries(it, i, inContent) {
     const sel = inContent ? String(window.getSelection() || '') : '';
+    const apps = (state.sendToApps && state.sendToApps.length) ? state.sendToApps : (S.sendToApps && S.sendToApps.length ? S.sendToApps : []);
+    const textToSend = inContent ? shownText(it) : (it.text || it.ocrText);
     return [
       sel && { label: t('menu.copySelection'), run: () => copyText(sel) },
       sel && on('copyRtl') && HEB.test(sel) && { label: t('menu.copySelectionRtl'), run: () => copyText(sel, true) },
@@ -927,6 +1341,14 @@
       it.text && { label: t('menu.copy'), run: () => copyText(inContent ? shownText(it) : it.text) },
       it.text && on('copyRtl') && HEB.test(inContent ? shownText(it) : it.text) && { label: t('menu.copyRtl'), key: inContent ? '⇧⌘C' : '', run: () => copyText(inContent ? shownText(it) : it.text, true) },
       it.text && '-',
+      apps.length > 0 && textToSend && it.fmt !== 'secret' && {
+        label: t('menu.sendTo'),
+        sub: apps.map((app) => ({
+          label: app.name || app.id,
+          run: () => native({ cmd: 'sendTo', app: app.id, text: textToSend }),
+        })),
+      },
+      (apps.length > 0 && textToSend && it.fmt !== 'secret') && '-',
       { label: it.pinned ? t('menu.unpin') : t('menu.pin'), run: () => op(it.pinned ? 'unpin' : 'pin', it) },
       { label: t('menu.openInWindow'), run: () => native({ cmd: 'openItem', id: keyOf(it) }) },
       inContent ? { label: held ? t('menu.follow') : t('menu.hold'), key: '⌘L', run: () => window.monitor.toggleHold() }
@@ -958,13 +1380,14 @@
       // Our own Copy / Copy RTL: the user already sees this content, don't add a near-duplicate.
       if (item.self) return;
       item = Object.assign({}, item);
-      // "Open in Clipboard Monitor" from the Translate at Pointer card: translate right away to the same target.
+      // "Open in TextMonitor" from Quick Translate in Text Actions: translate right away to the same target.
       const translateTo = item.translateTo; delete item.translateTo;
       item.time = item.time || Date.now();
+      item.id = item.id || String(item.time);
       item.fmt = classify(item);
       const same = (a) => a && a.fmt === item.fmt && (item.text ? a.text === item.text : item.image ? a.image === item.image : false);
       const dup = history.findIndex(same);
-      if (dup === 0 && (shownIndex === 0 || held)) { history[0].time = item.time; updateHeader(); return; }
+      if (dup === 0 && (shownIndex === 0 || held)) { history[0].time = item.time; history[0].id = item.id; updateHeader(); return; }
       let shownItem = history[shownIndex];
       if (dup >= 0) {
         item.pinned = history[dup].pinned;
@@ -989,9 +1412,11 @@
       if (!Array.isArray(items)) return;
       const byKey = new Map(history.map((h) => [keyOf(h), h]));
       for (const it of items) {
+        it.id = it.id || String(it.time);
         const mine = byKey.get(keyOf(it));
         if (mine) { if (it.pinned) mine.pinned = true; continue; }
         it.fmt = classify(it); history.push(it);
+        byKey.set(keyOf(it), it);
       }
       const shownItem = history[shownIndex];
       history.sort((a, b) => b.time - a.time);
@@ -1005,10 +1430,13 @@
       Object.assign(S, s);
       if (I18N.setLang(S.uiLangResolved || 'en')) CM.emit('lang', I18N.lang);
       CM.emit('settings', S);
+      if (!history[shownIndex]) render();
     },
     aiState(st) { CM.ai = st || { providers: [], presets: [] }; CM.emit('aiState', CM.ai); },
     aiEvent(ev) { CM.emit('aiEvent', ev); },
     versionInfo(info) { CM.emit('versionInfo', info); },
+    hotkeyRejected(info) { CM.emit('hotkeyRejected', info); },
+    actionGenerated(ev) { CM.emit('actionGenerated', ev); },
     setState(s) { state = Object.assign(state, s); updateHeader(); },
     setInsets(i) {
       const r = document.documentElement.style;
@@ -1029,6 +1457,7 @@
     toggleSettings(force) {
       const on = document.body.classList.toggle('show-settings', force);
       CM.emit('settingsPanel', on);
+      if (!on && !history[shownIndex]) render();
       updateHeader();
     },
     openSettings() { this.toggleSettings(true); },
@@ -1037,6 +1466,7 @@
       const shownItem = history[shownIndex];
       history = history.filter((it) => it.pinned || it === shownItem);
       shownIndex = Math.max(0, history.indexOf(shownItem));
+      editing = false;
       render(); renderHistory(); save(true);
     },
     applyOp({ op: kind, key }) {
@@ -1074,6 +1504,7 @@
           : (r.fallbackError || (r.fallbackFrom !== 'llm' ? r.fallbackFrom : '')) } : null;
         // A fallback result was made on-device: cache it as such so the next request tries the AI model again.
         it.translations[key] = Object.assign(base, { text: r.text, fallback: fb }, fb ? { sig: 'apple' } : {});
+        if (it.ocrText) it.ocrTranslation = r.text;
       }
       const shown = it === history[shownIndex] && it.trKey === key;
       if (shown && !r.error) view = 'translation';
@@ -1085,18 +1516,52 @@
       document.querySelectorAll('.preview').forEach((slot) => { if (slot.dataset.url === p.url) fillPreview(slot, p); });
       document.querySelectorAll('.card button[data-loading]').forEach((b) => b.remove());
     },
+    ocrResult(res) {
+      if (!res || !res.id) return;
+      const it = history.find((h) => keyOf(h) === res.id);
+      if (it) {
+        it.ocrText = res.text || '';
+        it.ocrError = res.error || '';
+      }
+      if (history[shownIndex] && keyOf(history[shownIndex]) === res.id) {
+        render();
+      }
+    },
     copyRtl() {
       const it = history[shownIndex];
       if (!it || !it.text) return;
+      flashCheckmark($('#b-rtl'));
       native({ cmd: 'copy', text: wrapRtl(shownText(it)) });
       toast(t('toast.copiedRtl'));
     },
   };
 
+  function flashCheckmark(btn) {
+    if (!btn) return;
+    const lbl = btn.querySelector('.lbl') || btn;
+    if (!btn._origText) btn._origText = lbl.textContent;
+    lbl.textContent = '✓ ' + btn._origText.replace(/^✓\s*/, '');
+    clearTimeout(btn._checkTimer);
+    btn._checkTimer = setTimeout(() => {
+      if (btn._origText) {
+        lbl.textContent = btn._origText;
+        delete btn._origText;
+      }
+      delete btn._checkTimer;
+    }, 1200);
+  }
+
   $('#b-raw').onclick = () => window.monitor.toggleRaw();
   $('#b-hist').onclick = () => window.monitor.toggleHistory();
   $('#b-hold').onclick = () => window.monitor.toggleHold();
-  $('#b-copy').onclick = () => { const it = history[shownIndex]; if (it && it.text) { native({ cmd: 'copy', text: shownText(it) }); toast(t('toast.copied')); } };
+  $('#b-copy').onclick = () => {
+    const it = history[shownIndex];
+    if (it && it.text) {
+      flashCheckmark($('#b-copy'));
+      native({ cmd: 'copy', text: shownText(it) });
+      toast(t('toast.copied'));
+    }
+  };
   $('#b-rtl').onclick = () => window.monitor.copyRtl();
   $('#kind').ondblclick = () => native({ cmd: 'pause' });
   $('#search').addEventListener('input', (e) => { query = e.target.value; renderHistory(); });
@@ -1114,10 +1579,20 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && ctx.classList.contains('show')) { closeMenu(true); return; }
     if (e.key === 'Escape' && document.body.classList.contains('show-settings')) { window.monitor.toggleSettings(false); return; }
+    if (e.key === 'Escape' && editing) { editing = false; render(); return; }
     if (e.key === 'Escape' && (picking || compareWith)) { picking = false; compareWith = null; render(); renderHistory(); return; }
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'e' || e.key === 'E')) {
+      const it = history[shownIndex];
+      if (it && it.text && it.kind !== 'image' && it.kind !== 'secret' && it.kind !== 'other' && it.fmt !== 'image' && it.fmt !== 'secret' && it.fmt !== 'other') {
+        e.preventDefault();
+        editing = true;
+        render();
+        return;
+      }
+    }
     if (e.target.closest && e.target.closest('input, textarea, select')) return;
-    if (e.key === 'ArrowDown' && shownIndex < history.length - 1) { shownIndex++; render(); renderHistory(); }
-    if (e.key === 'ArrowUp' && shownIndex > 0) { shownIndex--; render(); renderHistory(); }
+    if (e.key === 'ArrowDown' && shownIndex < history.length - 1) { shownIndex++; editing = false; render(); renderHistory(); }
+    if (e.key === 'ArrowUp' && shownIndex > 0) { shownIndex--; editing = false; render(); renderHistory(); }
   });
 
   // Tell the app which parts of the header are controls; the rest of the header drags the window.
@@ -1129,6 +1604,11 @@
   }
   new ResizeObserver(reportDragZones).observe($('header'));
   window.addEventListener('resize', reportDragZones);
-  CM.on('lang', () => { render(); renderHistory(); });
+  CM.on('lang', () => {
+    const bc = $('#b-copy'), br = $('#b-rtl');
+    if (bc && bc._checkTimer) { clearTimeout(bc._checkTimer); delete bc._origText; delete bc._checkTimer; }
+    if (br && br._checkTimer) { clearTimeout(br._checkTimer); delete br._origText; delete br._checkTimer; }
+    render(); renderHistory();
+  });
   applySettings(); updateHeader(); renderHistory();
 })();

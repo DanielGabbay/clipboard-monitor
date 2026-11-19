@@ -6,7 +6,6 @@
 <title>TextMonitor</title>
 <link rel="stylesheet" href="hljs.css">
 <link rel="stylesheet" href="app.css">
-<link rel="stylesheet" href="settings-features.css">
 <link rel="stylesheet" href="settings-translate.css">
 <link rel="stylesheet" href="settings-actions.css">
 <link rel="stylesheet" href="settings-ai.css">
@@ -22,7 +21,6 @@
   <button id="b-rtl" class="hbtn" data-i18n-title="header.copyRtl.title" data-i18n-aria="header.copyRtl"><svg class="ic" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.5 4h6.5M9.5 8h4.5M7.5 12h6.5M5.5 8H1.5M3 6.5 1.5 8 3 9.5"/></svg><span class="lbl" data-i18n="header.copyRtl">Copy RTL</span></button>
   <button id="b-hold" class="hbtn" data-i18n-title="header.hold.title" data-i18n-aria="header.hold"><svg class="ic" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg><span class="lbl" data-i18n="header.hold">Hold</span></button>
   <button id="b-hist" class="icon" data-i18n-title="header.history.title"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h7"/></svg></button>
-  <button id="b-theme" class="icon" data-i18n-title="header.theme.title"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5v11a5.5 5.5 0 0 0 0-11z" fill="currentColor"/></svg></button>
   <button id="b-settings" class="icon" data-i18n-title="header.settings.title"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1"/><circle cx="8" cy="8" r="4.6"/></svg></button>
 </header>
 <main>
@@ -30,7 +28,7 @@
   <aside id="history"><input id="search" type="search" data-i18n-placeholder="history.search"><div id="hlist"></div></aside>
 </main>
 
-<!-- Settings: a tab bar and one panel per tab. Tabs features / translate / ai / about are filled by settings-*.js via CM.registerTab. -->
+<!-- Settings: a tab bar and one panel per tab. Tabs actions / translate / ai / about are filled by settings-*.js via CM.registerTab. -->
 <section id="settings">
   <div class="s-head">
     <h2 data-i18n="settings.title">Settings</h2>
@@ -40,7 +38,6 @@
     <button role="tab" data-tab="general" data-i18n="settings.tab.general">General</button>
     <button role="tab" data-tab="content" data-i18n="settings.tab.content">Content</button>
     <button role="tab" data-tab="history" data-i18n="settings.tab.history">History</button>
-    <button role="tab" data-tab="features" data-i18n="settings.tab.features">Features</button>
     <button role="tab" data-tab="actions" data-i18n="settings.tab.actions">Text Actions</button>
     <button role="tab" data-tab="translate" data-i18n="settings.tab.translate">Translation</button>
     <button role="tab" data-tab="ai" data-i18n="settings.tab.ai">AI</button>
@@ -67,9 +64,7 @@
 
     <h3 data-i18n="settings.general.startup">Startup &amp; shortcut</h3>
     <div class="row" id="row-login"><span data-i18n="settings.general.loginItem">Launch at login</span><input type="checkbox" class="switch" data-key="loginItem"></div>
-    <div class="row"><span><span data-i18n="settings.general.hotkey">Show / hide shortcut</span><small data-i18n="settings.general.hotkey.hint">Works from any app.</small></span><select data-key="hotkey" dir="ltr">
-      <option value="ctrl-opt-v">⌃⌥V</option><option value="ctrl-opt-cmd-v">⌃⌥⌘V</option><option value="ctrl-shift-v">⌃⇧V</option>
-      <option value="ctrl-opt-space">⌃⌥Space</option><option value="off" data-i18n="settings.general.hotkey.off">Off</option></select></div>
+    <div class="row" id="row-hotkey"><span><span data-i18n="settings.general.hotkey">Show / hide shortcut</span><small data-i18n="settings.general.hotkey.hint">Works from any app.</small></span></div>
   </div>
 
   <div class="tab-panel" data-tab="content" role="tabpanel">
@@ -83,6 +78,22 @@
     <div class="row"><span><span data-i18n="settings.content.detect">Detection</span><small data-i18n="settings.content.detect.hint">Majority: a line is RTL when enough of its letters are Hebrew. First letter: the browser's own dir=auto rule.</small></span>
       <select data-key="detect"><option value="majority" data-i18n="settings.content.detect.majority">Majority</option><option value="first-strong" data-i18n="settings.content.detect.first">First letter</option></select></div>
     <div class="row" id="row-ratio"><span><span data-i18n="settings.content.ratio">Hebrew share for RTL</span> <small id="ratio-label"></small></span><input type="range" data-key="ratio" min="0.1" max="0.7" step="0.05"></div>
+    <div class="row"><span><span data-i18n="settings.content.copyRtl">Copy with RTL marks</span><small data-i18n="settings.content.copyRtl.hint">The Copy RTL button and menu entries (adds direction marks to Hebrew lines).</small></span><input type="checkbox" class="switch" data-key="f.copyRtl"></div>
+
+    <h3 data-i18n="settings.content.tools">Smart cards &amp; tools</h3>
+    <div class="row"><span><span data-i18n="settings.content.smartCards">Smart cards</span><small data-i18n="settings.content.smartCards.hint">Recognize special content and show a card with details under it.</small></span><input type="checkbox" class="switch" data-key="f.smartCards"></div>
+    <div class="f-sub" id="smart-sub">
+      <div class="row"><span><span data-i18n="settings.content.smartJwt">JWT</span><small data-i18n="settings.content.smartJwt.hint">Decode the header and payload, show expiry.</small></span><input type="checkbox" class="switch" data-key="f.smartJwt"></div>
+      <div class="row"><span><span data-i18n="settings.content.smartJson">JSON explorer</span><small data-i18n="settings.content.smartJson.hint">Collapsible tree with a path filter.</small></span><input type="checkbox" class="switch" data-key="f.smartJson"></div>
+      <div class="row"><span><span data-i18n="settings.content.smartColor">Colors</span><small data-i18n="settings.content.smartColor.hint">Swatch and HEX / RGB / HSL / Swift values.</small></span><input type="checkbox" class="switch" data-key="f.smartColor"></div>
+      <div class="row"><span><span data-i18n="settings.content.smartTime">Dates and timestamps</span><small data-i18n="settings.content.smartTime.hint">Unix seconds / milliseconds and ISO 8601 as a readable date.</small></span><input type="checkbox" class="switch" data-key="f.smartTime"></div>
+      <div class="row"><span><span data-i18n="settings.content.smartBase64">Base64</span><small data-i18n="settings.content.smartBase64.hint">Decode Base64 that turns into readable text.</small></span><input type="checkbox" class="switch" data-key="f.smartBase64"></div>
+      <div class="row"><span><span data-i18n="settings.content.smartLink">Links</span><small data-i18n="settings.content.smartLink.hint">Host, path and query parameters of a copied URL.</small></span><input type="checkbox" class="switch" data-key="f.smartLink"></div>
+      <div class="row"><span><span data-i18n="settings.content.smartCron">Cron expressions</span><small data-i18n="settings.content.smartCron.hint">Explain cron schedules in plain words and show the next runs.</small></span><input type="checkbox" class="switch" data-key="f.smartCron"></div>
+      <div class="row"><span><span data-i18n="settings.content.smartCurl">curl commands</span><small data-i18n="settings.content.smartCurl.hint">Parse URL, method, headers and body of a copied curl command.</small></span><input type="checkbox" class="switch" data-key="f.smartCurl"></div>
+    </div>
+    <div class="row"><span><span data-i18n="settings.content.linkPreview">Link preview</span><small data-i18n="settings.content.linkPreview.hint">A “Load preview” button on link cards. The page is fetched only when you click it.</small></span><input type="checkbox" class="switch" data-key="f.linkPreview"></div>
+    <div class="row"><span><span data-i18n="settings.content.compare">Compare</span><small data-i18n="settings.content.compare.hint">Show the differences between two history items.</small></span><input type="checkbox" class="switch" data-key="f.compare"></div>
   </div>
 
   <div class="tab-panel" data-tab="history" role="tabpanel">
@@ -97,7 +108,6 @@
       <button class="btn danger primary" id="s-clear-yes" data-i18n="settings.history.clear.yes">Clear history</button><button class="btn" id="s-clear-no" data-i18n="settings.history.clear.cancel">Cancel</button></div>
   </div>
 
-  <div class="tab-panel" data-tab="features" role="tabpanel"></div>
   <div class="tab-panel" data-tab="actions" role="tabpanel"></div>
   <div class="tab-panel" data-tab="translate" role="tabpanel"></div>
   <div class="tab-panel" data-tab="ai" role="tabpanel"></div>
@@ -115,7 +125,6 @@
 <script src="core.js"></script>
 <script src="renderer.js"></script>
 <script src="settings.js"></script>
-<script src="settings-features.js"></script>
 <script src="actions-shared.js"></script>
 <script src="settings-actions.js"></script>
 <script src="settings-translate.js"></script>

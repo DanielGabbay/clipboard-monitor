@@ -2,7 +2,7 @@ import Cocoa
 
 // MARK: - AI providers service
 //
-// Bridge contract (see docs/PLAN-settings-ai-i18n.md): page -> native `ai.*` commands, native -> page
+// Bridge contract: page -> native `ai.*` commands, native -> page
 // `monitor.aiState({providers, presets})` broadcast to every window after any change, and
 // `monitor.aiEvent({id, modelId?, kind: "check" | "refresh", ok, ms, error?, time, added?})` to the asking window.
 // API keys live only in the Keychain (AIKeychain) and are never sent to the page.
@@ -16,13 +16,21 @@ final class AIService {
 
     private init() {
         providers = ProviderStore.load()
-        // A hint whose Keychain item is gone (deleted by hand in Keychain Access) would claim a key we do not have.
-        var changed = false
-        // Only a definite "not found" clears it: other Keychain errors (an ACL mismatch after a rebuild) keep the hint.
-        for i in providers.indices where providers[i].hasKey && AIKeychain.isMissing(account: providers[i].id) {
-            providers[i].keyHint = ""; changed = true
+        // Only reconcile Keychain hints when using the default support directory so isolated E2E runs never mutate them.
+        if ProcessInfo.processInfo.environment["TEXTMONITOR_SUPPORT_DIR"] == nil {
+            var changed = false
+            for i in providers.indices {
+                if providers[i].hasKey {
+                    // Only a definite "not found" clears it: other Keychain errors (an ACL mismatch after a rebuild) keep the hint.
+                    if AIKeychain.isMissing(account: providers[i].id) {
+                        providers[i].keyHint = ""; changed = true
+                    }
+                } else if AIKeychain.exists(account: providers[i].id) {
+                    providers[i].keyHint = "••••"; changed = true
+                }
+            }
+            if changed { ProviderStore.save(providers) }
         }
-        if changed { ProviderStore.save(providers) }
     }
 
     /// Called once at launch: starts the automatic model refresh.
@@ -165,7 +173,13 @@ final class AIService {
 
     /// Reads the key from the Keychain for one request; nothing keeps it afterwards.
     private func key(for p: AIProvider) -> String? {
-        p.hasKey ? AIKeychain.read(account: p.id) : nil
+        guard p.hasKey || AIKeychain.exists(account: p.id) else { return nil }
+        let k = AIKeychain.read(account: p.id)
+        if let k, !k.isEmpty, (p.keyHint.isEmpty || p.keyHint == "••••"), let i = index(p.id) {
+            providers[i].keyHint = AIKeychain.hint(k)
+            commit()
+        }
+        return k
     }
 
     private func send(_ event: [String: Any], to c: MonitorController?) {
@@ -238,5 +252,16 @@ final class AIService {
         guard let p = provider(providerId) else { throw AIError("AI provider not found") }
         let key = key(for: p)
         return try await AIClient.chat(p.endpoint, key: key, model: model, system: system, user: user, maxTokens: maxTokens, timeout: timeout)
+    }
+
+    /// Streaming multi-turn chat with a stored provider and model.
+    func chatStream(providerId: String, model: String, system: String?, messages: [[String: String]],
+                    maxTokens: Int? = nil, timeout: TimeInterval) -> AsyncThrowingStream<String, Error> {
+        guard let p = provider(providerId) else {
+            return AsyncThrowingStream { $0.finish(throwing: AIError("AI provider not found")) }
+        }
+        let ep = p.endpoint
+        let k = key(for: p)
+        return AIClient.chatStream(ep, key: k, model: model, system: system, messages: messages, maxTokens: maxTokens, timeout: timeout)
     }
 }

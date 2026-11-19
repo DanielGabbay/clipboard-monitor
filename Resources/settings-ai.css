@@ -5,9 +5,7 @@
 @media (prefers-color-scheme: dark) { #settings .ai-tab { --ai-ok: #4cc472; --ai-bad: var(--danger, #ff6b6b); } }
 #settings .ai-tab .note { margin: 6px 0; }
 #settings .ai-intro { font-size: 12px; line-height: 1.4; margin-top: 10px; }
-#settings .ai-notice { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; padding: 6px 10px;
-  border: 1px solid var(--warn); border-radius: 8px; color: var(--warn); font-size: 12px; }
-#settings .ai-notice span { flex: 1; min-width: 120px; }
+#settings .ai-tab .ai-body.off { opacity: .45; pointer-events: none; }
 /* Cards sit on --panel, so controls inside them use the page background to stay visible. */
 #settings .ai-prov .btn, #settings .ai-form .btn:not(.primary) { background: var(--bg); }
 #settings .ai-tab .btn.on { color: var(--accent); border-color: var(--accent); }

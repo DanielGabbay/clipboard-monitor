@@ -22,6 +22,17 @@ struct TextSelection: @unchecked Sendable {     // AXUIElement is an immutable C
     let pid: pid_t
     /// The focused element, when the text came from the accessibility tree.
     let element: AXUIElement?
+    /// True only when the text came from a real selection in an external app (never a hovered paragraph).
+    let canReplace: Bool
+
+    init(text: String, raw: String, anchor: CGRect, pid: pid_t, element: AXUIElement?, canReplace: Bool? = nil) {
+        self.text = text
+        self.raw = raw
+        self.anchor = anchor
+        self.pid = pid
+        self.element = element
+        self.canReplace = canReplace ?? (pid != 0)
+    }
 }
 
 enum SelectionRead: Sendable {
@@ -35,6 +46,16 @@ enum SelectionReader {
     static let timeout: Float = 0.5
 
     /// The selection of the focused element of the front app. `pointer` is the fallback anchor.
+    static func readFrontmostSelection() -> TextSelection? {
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        let pointer = NSEvent.mouseLocation
+        let res = read(frontPid: frontApp?.processIdentifier, pointer: CGPoint(x: pointer.x, y: pointer.y), excluding: getpid())
+        if case .found(let sel) = res {
+            return sel
+        }
+        return nil
+    }
+
     static func read(frontPid: pid_t?, pointer: CGPoint, excluding myPid: pid_t) -> SelectionRead {
         let system = AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(system, timeout)

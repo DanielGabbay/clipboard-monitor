@@ -1,2 +1,5 @@
 /* Services menu title (Info.plist NSServices). */
 "TextMonitor: Text Actions" = "TextMonitor: פעולות על טקסט";
+"TextMonitor: Flip Hebrew/English Keyboard" = "TextMonitor: היפוך מקלדת עברית/אנגלית";
+"TextMonitor: Wrap with RTL Marks" = "TextMonitor: עטיפה בסימני RTL";
+"TextMonitor: Show in Monitor" = "TextMonitor: הצג במוניטור";

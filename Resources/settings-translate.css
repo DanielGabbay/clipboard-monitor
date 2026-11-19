@@ -1,5 +1,8 @@
 /* Settings › Translation tab, plus the translate split button / menu in the action bar (renderer.js). */
 #settings .translate-tab [hidden] { display: none !important; }
+#settings .translate-tab .t-body.off { opacity: .45; pointer-events: none; }
+#settings .translate-tab .t-body.off .row.off { opacity: 1; }
+#settings .translate-tab .t-body.off button:disabled { opacity: 1; }
 #settings .translate-tab .t-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 8px 0 2px;
   padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; font-size: 12.5px; line-height: 1.4; }
 #settings .translate-tab .t-notice > span { flex: 1 1 160px; }

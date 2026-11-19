@@ -285,7 +285,10 @@ final class LensController: NSObject, NSWindowDelegate, WKNavigationDelegate {
         let documentMode = Self.reading
         readQueue.async {
             let firstTime = AXTextReader.enableManualAccessibility(target.pid)
-            let lines = AXTextReader.read(target, region: region)
+            var lines = AXTextReader.read(target, region: region)
+            if lines.isEmpty {
+                lines = OCRReader.recognizeSpans(in: region, belowWindowNumber: target.windowNumber)
+            }
             let spans = documentMode ? AXTextReader.joinLines(lines) : lines
             DispatchQueue.main.async {
                 LensController.shared?.didRead(spans, region: region, target: target, treeJustEnabled: firstTime)

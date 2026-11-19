@@ -12,8 +12,6 @@
 #settings .about .row > .about-dirty { flex: none; background: transparent; color: var(--warn); border: 1px solid currentColor; font-weight: 500; }
 
 #settings .about .row-btns { margin-block: 12px 4px; }
-/* Fallback look until the shared .btn system (app.css) lands; :where() keeps it at the specificity of a bare `button` (0,0,1) so .btn wins. */
-:where(#settings .about) button:where(.about-copy) { border-color: var(--line); background: var(--panel); }
 
 #settings .about-notes { font-size: 13px; line-height: 1.5; padding: 10px 12px; border: 1px solid var(--line);
   border-radius: 8px; background: var(--panel); -webkit-user-select: text; user-select: text; }

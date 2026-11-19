@@ -1,5 +1,5 @@
 // Settings panel shell: tab bar, generic binding of [data-key] controls to settings, and the simple tabs
-// (General, Content, History). Feature / AI / About tabs are modules that call CM.registerTab(id, {mount, update}).
+// (General, Content, History). Text Actions / Translation / AI / About tabs are modules that call CM.registerTab(id, {mount, update}).
 (function () {
   'use strict';
   const $ = (s) => document.querySelector(s);
@@ -24,12 +24,6 @@
       'settings.history.cleared': 'ההיסטוריה נוקתה',
     },
   });
-  // Fallback for the Translation tab label; i18n-core owns it, so only fill it when core does not have it yet.
-  {
-    const K = 'settings.tab.translate';
-    if (t(K) === K) I18N.register({ en: { [K]: 'Translation' } });
-    if (I18N.missing('he').includes(K)) I18N.register({ he: { [K]: 'תרגום' } });
-  }
 
   /** aria-label from a string key, for icon-capable buttons: <button data-i18n-aria="header.raw">. */
   function applyAria(root) {
@@ -123,6 +117,12 @@
     $('#ratio-label').textContent = t('settings.content.ratio.value', { pct: Math.round(S.ratio * 100) });
     $('#row-ratio').style.opacity = S.detect === 'majority' ? 1 : .4;
     $('#row-login').style.display = S.loginSupported ? '' : 'none';
+    const smartOn = S['f.smartCards'] !== false;
+    document.querySelectorAll('#smart-sub .row').forEach((r) => {
+      r.classList.toggle('off', !smartOn);
+      const inp = r.querySelector('input');
+      if (inp) inp.disabled = !smartOn;
+    });
   }
 
   /** Binds every [data-key] control inside root. Modules may call CM.bindControls(panelEl) for their own rows. */
@@ -147,35 +147,52 @@
   }
   CM.bindControls = bindControls;
   CM.fillForm = fillForm;
+  const hkRow = $('#row-hotkey');
+  if (hkRow) hkRow.appendChild(CM.hotkeyRecorder('hotkey'));
   bindControls($('#settings'));
 
   CM.on('settings', () => { fillForm(); updateTabs(); });
   CM.on('aiState', updateTabs);
 
-  // ---- buttons -----------------------------------------------------------------------------------------
-  const THEMES = ['system', 'light', 'dark'];
-  $('#b-theme').onclick = () => {
-    const next = THEMES[(THEMES.indexOf(S.theme) + 1) % THEMES.length];
-    CM.setSetting('theme', next);
-    CM.toast(t('toast.appearance', { theme: t('settings.general.theme.' + next) }));
-  };
-  $('#b-settings').onclick = () => window.monitor.toggleSettings();
-  $('#s-close').onclick = () => window.monitor.toggleSettings(false);
-  $('#s-newwin').onclick = () => CM.native({ cmd: 'newWindow' });
-  $('#s-newtab').onclick = () => CM.native({ cmd: 'newTab' });
   // Clear history: two-step inline confirm (no window.confirm). Cancel gets focus, so Return does not clear.
   const clearConfirm = $('#s-clear-confirm');
   function hideClearConfirm(refocus) {
-    if (clearConfirm.hidden) return;
+    if (!clearConfirm || clearConfirm.hidden) return;
     clearConfirm.hidden = true;
-    $('#s-clear').hidden = false;
-    if (refocus) $('#s-clear').focus();
+    const clr = $('#s-clear');
+    if (clr) clr.hidden = false;
+    if (refocus && clr) clr.focus();
   }
-  $('#s-clear').onclick = () => {
-    $('#s-clear').hidden = true;
-    clearConfirm.hidden = false;
-    $('#s-clear-no').focus();
-  };
+
+  // ---- buttons -----------------------------------------------------------------------------------------
+  const bTheme = $('#b-theme');
+  if (bTheme) {
+    const THEMES = ['system', 'light', 'dark'];
+    bTheme.onclick = () => {
+      const next = THEMES[(THEMES.indexOf(S.theme) + 1) % THEMES.length];
+      CM.setSetting('theme', next);
+      CM.toast(t('toast.appearance', { theme: t('settings.general.theme.' + next) }));
+    };
+  }
+  const bSettings = $('#b-settings');
+  if (bSettings) bSettings.onclick = () => window.monitor.toggleSettings();
+  const sClose = $('#s-close');
+  if (sClose) sClose.onclick = () => window.monitor.toggleSettings(false);
+  const sNewWin = $('#s-newwin');
+  if (sNewWin) sNewWin.onclick = () => CM.native({ cmd: 'newWindow' });
+  const sNewTab = $('#s-newtab');
+  if (sNewTab) sNewTab.onclick = () => CM.native({ cmd: 'newTab' });
+  const sClear = $('#s-clear');
+  if (sClear) {
+    sClear.onclick = () => {
+      sClear.hidden = true;
+      if (clearConfirm) {
+        clearConfirm.hidden = false;
+        const noBtn = $('#s-clear-no');
+        if (noBtn) noBtn.focus();
+      }
+    };
+  }
   $('#s-clear-no').onclick = () => hideClearConfirm(true);
   $('#s-clear-yes').onclick = () => {
     CM.native({ cmd: 'clearAll' });

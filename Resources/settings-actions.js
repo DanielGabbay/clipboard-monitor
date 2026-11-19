@@ -1,5 +1,5 @@
 // Settings › Text Actions tab: how the popover opens (recorded shortcut, floating button, menu bar icon, Services
-// menu), the model the actions use, and the user's own actions ("customActions": JSON [{id, name, prompt}]).
+// menu), the model the actions use, and the action library ("actionsList": JSON [{id, name?, icon?, prompt?, replaces?}]).
 // update(S) runs on 'settings' and 'aiState' (see settings.js).
 (function () {
   'use strict';
@@ -7,16 +7,13 @@
   I18N.register({
     en: {
       'settings.tab.actions': 'Text Actions',
-      'settings.actions.off': 'Text Actions is turned off.',
-      'settings.actions.turnOn': 'Turn on',
+      'settings.actions.enable': 'Text Actions',
+      'settings.actions.enable.hint': 'Select text in any app and open a popover of actions on it.',
       'settings.actions.open': 'Opening the popover',
       'settings.actions.hotkey': 'Shortcut',
       'settings.actions.hotkey.hint': 'Select text in any app, then press it. Click to record a new one.',
-      'settings.actions.hotkey.off': 'Off',
-      'settings.actions.hotkey.recording': 'Press the shortcut…',
-      'settings.actions.hotkey.needMod': 'Include ⌃, ⌥ or ⌘',
-      'settings.actions.hotkey.clear': 'Turn the shortcut off',
-      'settings.actions.hotkey.taken': 'That shortcut is already in use. The previous one was kept.',
+      'settings.actions.flipHotkey': 'Quick keyboard flip',
+      'settings.actions.flipHotkey.hint': 'Flips and replaces selected text between Hebrew and English in any app, without opening a window.',
       'settings.actions.button': 'Button next to the selection',
       'settings.actions.button.hint': 'A small button appears after you select text with the mouse. Needs Accessibility access; some apps do not report their selection.',
       'settings.actions.menuBar': 'Menu bar icon',
@@ -41,6 +38,21 @@
       'settings.actions.lib.prompt.hint': 'Put {{ SELECTED TEXT }} where the selected text should go. Without it, the selected text is sent after the prompt. Click to insert:',
       'settings.actions.lib.replaces': 'Replace is the main button',
       'settings.actions.lib.replaces.hint': 'For actions that rewrite the text. Otherwise Copy is.',
+      'settings.actions.lib.localHint': 'Instant local action — runs without AI.',
+      'settings.actions.lib.missingName': 'Enter a name — hidden from the popover until set.',
+      'settings.actions.lib.missingPrompt': 'Enter a prompt — hidden from the popover until set.',
+      'settings.actions.lib.missingBadge': 'Incomplete',
+      'settings.actions.ai.title': '✨ Create or refine an action with AI',
+      'settings.actions.ai.phNew': 'Describe an action, e.g. Turn into polite bullet points',
+      'settings.actions.ai.phEdit': 'How to change “{name}”, e.g. Make it shorter',
+      'settings.actions.ai.targetEdit': 'Refining: {name}',
+      'settings.actions.ai.newInstead': 'Create new instead',
+      'settings.actions.ai.btnCreate': 'Create',
+      'settings.actions.ai.btnUpdate': 'Update',
+      'settings.actions.ai.generating': 'Generating…',
+      'settings.actions.ai.created': 'Action created',
+      'settings.actions.ai.updated': 'Action updated',
+      'settings.actions.ai.noModel': 'Set up an AI model first to generate actions.',
       'settings.actions.lib.up': 'Move up',
       'settings.actions.lib.down': 'Move down',
       'settings.actions.lib.add': 'Add action',
@@ -68,16 +80,13 @@
     },
     he: {
       'settings.tab.actions': 'פעולות על טקסט',
-      'settings.actions.off': 'פעולות על טקסט כבויות.',
-      'settings.actions.turnOn': 'הפעל',
+      'settings.actions.enable': 'פעולות על טקסט',
+      'settings.actions.enable.hint': 'סמן טקסט בכל יישום ופתח חלונית פעולות עליו.',
       'settings.actions.open': 'פתיחת החלונית',
       'settings.actions.hotkey': 'קיצור',
       'settings.actions.hotkey.hint': 'סמן טקסט בכל יישום ולחץ עליו. לחץ כאן כדי להקליט קיצור חדש.',
-      'settings.actions.hotkey.off': 'כבוי',
-      'settings.actions.hotkey.recording': 'לחץ על הקיצור…',
-      'settings.actions.hotkey.needMod': 'הוסף ⌃, ⌥ או ⌘',
-      'settings.actions.hotkey.clear': 'כבה את הקיצור',
-      'settings.actions.hotkey.taken': 'הקיצור הזה כבר בשימוש. הקיצור הקודם נשאר.',
+      'settings.actions.flipHotkey': 'היפוך מקלדת מהיר',
+      'settings.actions.flipHotkey.hint': 'הופך ומחליף טקסט מסומן בין עברית לאנגלית בכל יישום, בלי לפתוח חלון.',
       'settings.actions.button': 'כפתור ליד הסימון',
       'settings.actions.button.hint': 'כפתור קטן מופיע אחרי סימון טקסט בעכבר. דורש גישת נגישות; יש יישומים שלא מדווחים על הסימון שלהם.',
       'settings.actions.menuBar': 'סמל בשורת התפריטים',
@@ -102,6 +111,21 @@
       'settings.actions.lib.prompt.hint': 'כתוב {{ SELECTED TEXT }} במקום שבו הטקסט המסומן צריך להופיע. בלעדיו, הטקסט המסומן נשלח אחרי הפרומפט. לחץ כדי להוסיף:',
       'settings.actions.lib.replaces': '„החלף” הוא הכפתור הראשי',
       'settings.actions.lib.replaces.hint': 'לפעולות שמשכתבות את הטקסט. אחרת הכפתור הראשי הוא „העתק”.',
+      'settings.actions.lib.localHint': 'פעולה מקומית מיידית — פועלת ללא AI.',
+      'settings.actions.lib.missingName': 'יש להזין שם — הפעולה מוסתרת מהחלונית עד אז.',
+      'settings.actions.lib.missingPrompt': 'יש להזין פרומפט — הפעולה מוסתרת מהחלונית עד אז.',
+      'settings.actions.lib.missingBadge': 'חסר מידע',
+      'settings.actions.ai.title': '✨ צור או התאם פעולה עם AI',
+      'settings.actions.ai.phNew': 'תאר פעולה, למשל: הפוך לרשימת נקודות מנומסת',
+      'settings.actions.ai.phEdit': 'איך לשנות את „{name}”, למשל: קצר את התוצאה',
+      'settings.actions.ai.targetEdit': 'מתאים את: {name}',
+      'settings.actions.ai.newInstead': 'צור חדשה במקום',
+      'settings.actions.ai.btnCreate': 'צור',
+      'settings.actions.ai.btnUpdate': 'עדכן',
+      'settings.actions.ai.generating': 'יוצר…',
+      'settings.actions.ai.created': 'הפעולה נוצרה',
+      'settings.actions.ai.updated': 'הפעולה עודכנה',
+      'settings.actions.ai.noModel': 'יש להגדיר מודל AI תחילה כדי ליצור פעולות.',
       'settings.actions.lib.up': 'הזז למעלה',
       'settings.actions.lib.down': 'הזז למטה',
       'settings.actions.lib.add': 'הוסף פעולה',
@@ -134,88 +158,58 @@
   const autoDir = (f) => { const sync = () => { if (f.value) f.dir = 'auto'; else f.removeAttribute('dir'); }; f.addEventListener('input', sync); sync(); };
   const labelled = (key) => { const s = el('span'); s.append(el('span', '', t(key)), el('small', '', t(key + '.hint'))); return s; };
 
-  // ---- shortcut ------------------------------------------------------------------------------------------
-  const KEY_RE = /^(Key[A-Z]|Digit\d|F([1-9]|1[0-2])|Space|Enter|Tab|Minus|Equal|BracketLeft|BracketRight|Semicolon|Quote|Comma|Period|Slash|Backslash|Backquote|Arrow(Left|Right|Up|Down))$/;
-  const KEY_LABEL = { Space: 'Space', Enter: '↩', Tab: '⇥', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';',
-    Quote: '\'', Comma: ',', Period: '.', Slash: '/', Backslash: '\\', Backquote: '`', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓' };
-  const MODS = [['ctrl', '⌃'], ['opt', '⌥'], ['shift', '⇧'], ['cmd', '⌘']];
-
-  /** "ctrl+opt+KeyA" -> "⌃⌥A". */
-  function hotkeyLabel(v) {
-    const parts = String(v || '').split('+');
-    const code = parts.pop();
-    if (!parts.length || !KEY_RE.test(code)) return t('settings.actions.hotkey.off');
-    const key = KEY_LABEL[code] || code.replace(/^(Key|Digit)/, '');
-    return MODS.filter(([m]) => parts.includes(m)).map(([, s]) => s).join('') + key;
-  }
-
-  function recorder() {
-    const wrap = el('span', 'hk');
-    const btn = el('button', 'hk-rec'); btn.type = 'button';
-    const clear = el('button', 'ghost hk-clear', '×'); clear.type = 'button'; clear.title = t('settings.actions.hotkey.clear');
-    clear.setAttribute('aria-label', t('settings.actions.hotkey.clear'));
-    let recording = false;
-    // A key combination reads left to right; the prompts are sentences in the interface language.
-    const show = (text, combo) => { btn.textContent = text; if (combo) btn.dir = 'ltr'; else btn.removeAttribute('dir'); };
-    const showCurrent = () => {
-      const label = hotkeyLabel(CM.S.actionsHotkey), off = label === t('settings.actions.hotkey.off');
-      show(label, !off);
-      clear.hidden = off;
-    };
-    // WebKit does not focus a button on click, so the keys are caught on the document while recording.
-    function onKey(e) {
-      e.preventDefault(); e.stopPropagation();
-      if (e.key === 'Escape') { stop(); return; }
-      if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
-      if (!KEY_RE.test(e.code)) return;
-      if (!(e.ctrlKey || e.altKey || e.metaKey)) { show(t('settings.actions.hotkey.needMod'), false); return; }
-      const mods = [e.ctrlKey && 'ctrl', e.altKey && 'opt', e.shiftKey && 'shift', e.metaKey && 'cmd'].filter(Boolean);
-      stop();
-      CM.setSetting('actionsHotkey', mods.concat(e.code).join('+'));
-    }
-    function onClickAway(e) { if (!wrap.contains(e.target)) stop(); }
-    function stop() {
-      if (!recording) return;
-      recording = false; btn.classList.remove('on');
-      document.removeEventListener('keydown', onKey, true);
-      document.removeEventListener('mousedown', onClickAway, true);
-      showCurrent();
-    }
-    btn.onclick = () => {
-      if (recording) { stop(); return; }
-      recording = true; btn.classList.add('on');
-      show(t('settings.actions.hotkey.recording'), false);
-      document.addEventListener('keydown', onKey, true);
-      document.addEventListener('mousedown', onClickAway, true);
-    };
-    clear.onclick = () => { stop(); CM.setSetting('actionsHotkey', 'off'); };
-    wrap.append(btn, clear);
-    wrap.refresh = () => { if (!recording) showCurrent(); };
-    return wrap;
-  }
-
-  // The app refuses a shortcut that is already taken and keeps the previous one (main.swift, setSetting).
-  if (window.monitor) window.monitor.hotkeyRejected = () => CM.toast(t('settings.actions.hotkey.taken'));
-
   // ---- library ------------------------------------------------------------------------------------------
   const PLACEHOLDERS = ['SELECTED TEXT', 'CLIPBOARD', 'LANGUAGE', 'APP', 'DATE', 'TIME'];
-  let lib = [];             // [{id, name, icon, prompt, replaces, builtin}]
+  const LOCAL_IDS = new Set(['flipKeyboard', 'wrapRtl', 'cleanSpaces']);
+  const isLocal = (a) => !!(a && (a.kind === 'local' || a.local || LOCAL_IDS.has(a.id)));
+  const missingFields = (a) => {
+    const needName = !a.builtin && !(a.name || '').trim();
+    const needPrompt = !a.builtin && !isLocal(a) && !(a.prompt || '').trim();
+    return { needName, needPrompt, hasAny: needName || needPrompt };
+  };
+
+  let lib = [];             // [{id, name, icon, prompt, replaces, builtin, kind?, local?}]
   let savedJson = null;     // the "actionsList" value this tab last wrote or showed
   let openId = null;        // the action whose editor is open
+  let saveTimer = null;
+  let forceNewAi = false;
+  let lastSettings = null;
+  let aiReq = null;
+  let aiTimeout = null;
+  let aiBusy = false;
+  let aiErrMsg = '';
+  let aiPendingTargetId = null;
+  let aiDraft = '';
+  let aiBoxSync = null;
+  let aiInputEl = null;
 
-  const libJson = () => JSON.stringify(lib.map((a) => ({ id: a.id, name: a.name || '', icon: a.icon, prompt: a.prompt || '', replaces: !!a.replaces })));
+  const libJson = () => JSON.stringify(lib.map((a) => ({ id: a.id, name: a.name || '', icon: a.icon, prompt: isLocal(a) ? '' : (a.prompt || ''), replaces: !!a.replaces })));
   // CM.S.actionsLibrary is kept in step, so the echo of this change from the app does not re-render the editor.
-  function saveLib() { savedJson = libJson(); CM.S.actionsLibrary = lib.map((a) => Object.assign({}, a)); CM.setSetting('actionsList', savedJson); }
+  function saveLib() {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    savedJson = libJson();
+    CM.S.actionsLibrary = lib.map((a) => Object.assign({}, a));
+    CM.setSetting('actionsList', savedJson);
+  }
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveLib, 350);
+  }
+  function flushSave() {
+    if (saveTimer) saveLib();
+  }
 
-  function editor(a, list, onName) {
+  function editor(a, list, onName, onValidity) {
     const box = el('div', 'lib-edit');
     const field = (key) => { const f = el('label', 'lib-field'); f.appendChild(el('span', 'lib-label', t(key))); return f; };
+    const local = isLocal(a);
 
     const nameF = field('settings.actions.lib.name');
     const name = el('input'); name.type = 'text'; name.value = a.name || '';
     name.placeholder = a.builtin ? ACTIONS.title({ id: a.id }) : t('settings.actions.lib.name.ph'); autoDir(name);
-    name.onchange = () => { a.name = name.value.trim(); saveLib(); onName(); };
-    nameF.appendChild(name);
+    const nameErr = el('div', 'lib-ferr', t('settings.actions.lib.missingName'));
+    nameF.append(name, nameErr);
 
     const iconF = el('div', 'lib-field'); iconF.appendChild(el('span', 'lib-label', t('settings.actions.lib.icon')));
     const grid = el('div', 'lib-icons'); grid.setAttribute('role', 'radiogroup');
@@ -223,37 +217,81 @@
       const b = el('button', 'ghost lib-icon' + (a.icon === id ? ' on' : '')); b.type = 'button';
       b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', a.icon === id ? 'true' : 'false'); b.setAttribute('aria-label', id);
       b.appendChild(ACTIONS.icon(id, 16));
-      b.onclick = () => { a.icon = id; saveLib(); renderLib(list); };
+      b.onclick = () => { flushSave(); a.icon = id; saveLib(); renderLib(list); };
       grid.appendChild(b);
     }
     iconF.appendChild(grid);
 
-    const promptF = field('settings.actions.lib.prompt');
-    const prompt = el('textarea'); prompt.value = a.prompt || ''; prompt.placeholder = t('settings.actions.lib.prompt.ph'); autoDir(prompt);
-    prompt.onchange = () => { a.prompt = prompt.value; saveLib(); };
-    promptF.appendChild(prompt);
-    const hint = el('div', 'lib-hint'); hint.appendChild(el('small', '', t('settings.actions.lib.prompt.hint')));
-    const chips = el('span', 'lib-chips'); chips.dir = 'ltr';
-    for (const p of PLACEHOLDERS) {
-      const c = el('button', 'ghost lib-chip', '{{ ' + p + ' }}'); c.type = 'button';
-      c.onclick = () => {
-        const at = prompt.selectionStart ?? prompt.value.length, to = prompt.selectionEnd ?? at, ins = '{{ ' + p + ' }}';
-        prompt.value = prompt.value.slice(0, at) + ins + prompt.value.slice(to);
-        prompt.dispatchEvent(new Event('input')); prompt.focus(); prompt.setSelectionRange(at + ins.length, at + ins.length);
-        a.prompt = prompt.value; saveLib();
-      };
-      chips.appendChild(c);
+    let prompt = null, promptErr = null;
+    const syncValidity = () => {
+      const m = missingFields(a);
+      name.setAttribute('aria-invalid', m.needName ? 'true' : 'false');
+      nameErr.hidden = !m.needName;
+      if (prompt && promptErr) {
+        prompt.setAttribute('aria-invalid', m.needPrompt ? 'true' : 'false');
+        promptErr.hidden = !m.needPrompt;
+      }
+      if (onValidity) onValidity(m.hasAny);
+    };
+
+    name.addEventListener('input', () => {
+      a.name = name.value.trim();
+      syncValidity();
+      onName();
+      if (aiBoxSync) aiBoxSync();
+      scheduleSave();
+    });
+    name.addEventListener('blur', () => { flushSave(); });
+
+    box.append(nameF, iconF);
+
+    if (local) {
+      box.appendChild(el('p', 'note lib-local-hint', t('settings.actions.lib.localHint')));
+    } else {
+      const promptF = field('settings.actions.lib.prompt');
+      prompt = el('textarea'); prompt.value = a.prompt || ''; prompt.placeholder = t('settings.actions.lib.prompt.ph'); autoDir(prompt);
+      promptErr = el('div', 'lib-ferr', t('settings.actions.lib.missingPrompt'));
+      prompt.addEventListener('input', () => {
+        a.prompt = prompt.value;
+        syncValidity();
+        scheduleSave();
+      });
+      prompt.addEventListener('blur', () => { flushSave(); });
+      promptF.append(prompt, promptErr);
+      const hint = el('div', 'lib-hint'); hint.appendChild(el('small', '', t('settings.actions.lib.prompt.hint')));
+      const chips = el('span', 'lib-chips'); chips.dir = 'ltr';
+      for (const p of PLACEHOLDERS) {
+        const c = el('button', 'ghost lib-chip', '{{ ' + p + ' }}'); c.type = 'button';
+        c.onclick = () => {
+          const at = prompt.selectionStart ?? prompt.value.length, to = prompt.selectionEnd ?? at, ins = '{{ ' + p + ' }}';
+          prompt.value = prompt.value.slice(0, at) + ins + prompt.value.slice(to);
+          prompt.dispatchEvent(new Event('input')); prompt.focus(); prompt.setSelectionRange(at + ins.length, at + ins.length);
+          a.prompt = prompt.value; syncValidity(); saveLib();
+        };
+        chips.appendChild(c);
+      }
+      hint.appendChild(chips);
+      box.append(promptF, hint);
     }
-    hint.appendChild(chips);
+
+    syncValidity();
 
     const rep = el('div', 'row lib-rep');
     const sw = el('input', 'switch'); sw.type = 'checkbox'; sw.checked = !!a.replaces;
-    sw.onchange = () => { a.replaces = sw.checked; saveLib(); };
+    sw.onchange = () => { flushSave(); a.replaces = sw.checked; saveLib(); };
     rep.append(labelled('settings.actions.lib.replaces'), sw);
 
     const del = el('button', 'btn danger sm', t('settings.actions.lib.delete')); del.type = 'button';
-    del.onclick = () => { lib = lib.filter((x) => x !== a); openId = null; saveLib(); renderLib(list); };
-    box.append(nameF, iconF, promptF, hint, rep, del);
+    del.onclick = () => {
+      flushSave();
+      lib = lib.filter((x) => x !== a);
+      openId = null;
+      forceNewAi = false;
+      saveLib();
+      renderLib(list);
+      if (aiBoxSync) aiBoxSync();
+    };
+    box.append(rep, del);
     return box;
   }
 
@@ -265,17 +303,32 @@
       const toggle = el('button', 'ghost lib-toggle'); toggle.type = 'button';
       toggle.setAttribute('aria-expanded', a.id === openId ? 'true' : 'false');
       const nm = el('span', 'lib-name', ACTIONS.title({ id: a.id, name: a.name })); nm.dir = 'auto';
-      toggle.append(ACTIONS.icon(a.icon, 15), nm);
-      toggle.onclick = () => { openId = openId === a.id ? null : a.id; renderLib(list); };
+      const missBadge = el('span', 'lib-miss', t('settings.actions.lib.missingBadge'));
+      missBadge.hidden = !missingFields(a).hasAny;
+      toggle.append(ACTIONS.icon(a.icon, 15), nm, missBadge);
+      toggle.onclick = () => {
+        flushSave();
+        openId = openId === a.id ? null : a.id;
+        forceNewAi = false;
+        renderLib(list);
+        if (aiBoxSync) aiBoxSync();
+      };
       const move = (d, key, glyph) => {
         const b = el('button', 'ghost lib-move', glyph); b.type = 'button'; b.title = t(key); b.setAttribute('aria-label', t(key));
         b.disabled = i + d < 0 || i + d >= lib.length;
-        b.onclick = () => { lib.splice(i + d, 0, lib.splice(i, 1)[0]); saveLib(); renderLib(list); };
+        b.onclick = () => { flushSave(); lib.splice(i + d, 0, lib.splice(i, 1)[0]); saveLib(); renderLib(list); };
         return b;
       };
       head.append(toggle, move(-1, 'settings.actions.lib.up', '↑'), move(1, 'settings.actions.lib.down', '↓'));
       item.appendChild(head);
-      if (a.id === openId) item.appendChild(editor(a, list, () => { nm.textContent = ACTIONS.title({ id: a.id, name: a.name }); }));
+      if (a.id === openId) {
+        item.appendChild(editor(
+          a,
+          list,
+          () => { nm.textContent = ACTIONS.title({ id: a.id, name: a.name }); },
+          (hasAny) => { missBadge.hidden = !hasAny; }
+        ));
+      }
       list.appendChild(item);
     });
   }
@@ -358,27 +411,23 @@
   }
 
   // ---- tab -----------------------------------------------------------------------------------------------
-  let root = null, hk = null, libList = null;
+  let root = null, hk = null, flipHk = null, libList = null;
   let section = 'options';
-  try { section = localStorage.getItem('cm.actionsSection') || 'options'; } catch (e) { /* no storage */ }
-
   function showSection(id) {
     section = ['options', 'library', 'log'].includes(id) ? id : 'options';
-    try { localStorage.setItem('cm.actionsSection', section); } catch (e) { /* no storage */ }
     root.querySelectorAll('.a-seg button').forEach((b) => { const on = b.dataset.sec === section; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
     root.querySelectorAll('.a-sec').forEach((s) => { s.hidden = s.dataset.sec !== section; });
     if (section === 'log') CM.native({ cmd: 'actionsLog.list' });
   }
 
   function mount(panel) {
+    section = 'options';
     root = panel;
     panel.classList.add('actions-tab');
-    const off = el('div', 'a-notice a-off');
-    off.appendChild(el('span', '', t('settings.actions.off')));
-    const on = el('button', 'btn primary sm', t('settings.actions.turnOn')); on.type = 'button';
-    on.onclick = () => CM.setSetting('f.actions', true);
-    off.appendChild(on);
-    panel.appendChild(off);
+    const master = el('div', 'row');
+    const mSw = el('input', 'switch'); mSw.type = 'checkbox'; mSw.dataset.key = 'f.actions';
+    master.append(labelled('settings.actions.enable'), mSw);
+    panel.appendChild(master);
 
     const body = el('div', 'a-body');
     const seg = el('div', 'seg a-seg');
@@ -393,9 +442,13 @@
     const opt = el('div', 'a-sec'); opt.dataset.sec = 'options';
     opt.appendChild(el('h3', '', t('settings.actions.open')));
     const hkRow = el('div', 'row');
-    hk = recorder();
+    hk = CM.hotkeyRecorder('actionsHotkey');
     hkRow.append(labelled('settings.actions.hotkey'), hk);
     opt.appendChild(hkRow);
+    const flipRow = el('div', 'row');
+    flipHk = CM.hotkeyRecorder('flipHotkey');
+    flipRow.append(labelled('settings.actions.flipHotkey'), flipHk);
+    opt.appendChild(flipRow);
     for (const [key, name] of [['actionsButton', 'button'], ['menuBarIcon', 'menuBar']]) {
       const row = el('div', 'row');
       const sw = el('input', 'switch'); sw.type = 'checkbox'; sw.dataset.key = key;
@@ -432,19 +485,106 @@
     // -- library
     const ls = el('div', 'a-sec'); ls.dataset.sec = 'library';
     ls.appendChild(el('p', 'note a-hint', t('settings.actions.lib.hint')));
+
+    const aiBox = el('div', 'lib-ai');
+    const aiHead = el('div', 'lib-ai-head');
+    aiHead.appendChild(el('span', 'lib-ai-title', t('settings.actions.ai.title')));
+    const aiCtx = el('span', 'lib-ai-ctx');
+    const aiTargetLbl = el('span', 'lib-ai-target');
+    const aiNewBtn = el('button', 'ghost lib-ai-reset', t('settings.actions.ai.newInstead')); aiNewBtn.type = 'button';
+    aiCtx.append(aiTargetLbl, aiNewBtn);
+    aiHead.appendChild(aiCtx);
+    const aiRow = el('div', 'lib-ai-row');
+    const aiInput = el('input'); aiInput.type = 'text'; aiInput.value = aiDraft; autoDir(aiInput);
+    aiInput.addEventListener('input', () => { aiDraft = aiInput.value; });
+    aiInputEl = aiInput;
+    const aiGo = el('button', 'btn primary sm', t('settings.actions.ai.btnCreate')); aiGo.type = 'button';
+    aiRow.append(aiInput, aiGo);
+    const aiErr = el('div', 'lib-ai-err'); aiErr.hidden = true;
+    aiBox.append(aiHead, aiRow, aiErr);
+
+    const targetAction = () => {
+      if (forceNewAi || !openId) return null;
+      const a = lib.find((x) => x.id === openId);
+      return a && !isLocal(a) ? a : null;
+    };
+    const syncAiBox = () => {
+      const target = targetAction();
+      const targetName = target ? ACTIONS.title({ id: target.id, name: target.name }) : '';
+      aiCtx.hidden = !target;
+      if (target) {
+        aiTargetLbl.textContent = t('settings.actions.ai.targetEdit', { name: targetName });
+        aiInput.placeholder = t('settings.actions.ai.phEdit', { name: targetName });
+      } else {
+        aiInput.placeholder = t('settings.actions.ai.phNew');
+      }
+      const aiOn = (lastSettings ? lastSettings['f.ai'] !== false : (window.CM && CM.S && CM.S['f.ai'] !== false));
+      aiGo.textContent = aiBusy
+        ? t('settings.actions.ai.generating')
+        : t(target ? 'settings.actions.ai.btnUpdate' : 'settings.actions.ai.btnCreate');
+      aiGo.disabled = aiBusy || !aiOn;
+      aiInput.disabled = aiBusy || !aiOn;
+      aiErr.textContent = aiErrMsg;
+      aiErr.hidden = !aiErrMsg;
+    };
+    aiBoxSync = syncAiBox;
+    aiNewBtn.onclick = () => { forceNewAi = true; syncAiBox(); aiInput.focus(); };
+
+    const submitAi = () => {
+      const reqText = aiInput.value.trim();
+      if (!reqText || aiBusy) return;
+      flushSave();
+      aiErrMsg = '';
+      const target = targetAction();
+      aiPendingTargetId = target ? target.id : null;
+      aiReq = 'sact-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      aiBusy = true;
+      syncAiBox();
+      clearTimeout(aiTimeout);
+      aiTimeout = setTimeout(() => {
+        if (!aiBusy) return;
+        aiBusy = false;
+        aiReq = null;
+        aiPendingTargetId = null;
+        aiErrMsg = 'Timed out.';
+        if (aiBoxSync) aiBoxSync();
+      }, 60000);
+      const payload = { cmd: 'actions.generate', req: aiReq, request: reqText };
+      if (target) {
+        payload.existing = {
+          name: target.name || ACTIONS.title({ id: target.id }),
+          icon: target.icon || 'custom',
+          prompt: target.prompt || '',
+          replaces: !!target.replaces,
+        };
+      }
+      CM.native(payload);
+    };
+    aiGo.onclick = () => { submitAi(); };
+    aiInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submitAi(); }
+    });
+
+    ls.appendChild(aiBox);
     libList = el('div', 'lib-list');
     ls.appendChild(libList);
     const libBtns = el('div', 'row-btns lib-btns');
     const add = el('button', 'btn', t('settings.actions.lib.add')); add.type = 'button';
     add.onclick = () => {
+      flushSave();
       const a = { id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: '', icon: 'custom', prompt: '', replaces: true, builtin: false };
-      lib.push(a); openId = a.id; saveLib(); renderLib(libList);
+      lib.push(a); openId = a.id; forceNewAi = false; saveLib(); renderLib(libList); syncAiBox();
       const input = libList.querySelector('.lib-item.open input[type=text]'); if (input) input.focus();
     };
     libBtns.append(add, confirmButton('settings.actions.lib.reset', 'settings.actions.lib.reset.confirm', 'settings.actions.lib.reset.yes', () => {
-      openId = null; savedJson = null; CM.S.actionsLibrary = (CM.S.actionsDefaults || []).map((a) => Object.assign({}, a)); CM.setSetting('actionsList', '[]');
+      flushSave();
+      openId = null; forceNewAi = false; savedJson = null;
+      CM.S.actionsLibrary = (CM.S.actionsDefaults || []).map((a) => Object.assign({}, a));
+      CM.setSetting('actionsList', '[]');
+      syncAiBox();
     }));
     ls.appendChild(libBtns);
+    syncAiBox();
     body.appendChild(ls);
 
     // -- log
@@ -497,10 +637,13 @@
 
   function update(S) {
     if (!root) return;
+    lastSettings = S;
     const on = S['f.actions'] !== false;
-    root.querySelector('.a-off').hidden = on;
-    root.querySelector('.a-body').hidden = !on;
+    const body = root.querySelector('.a-body');
+    body.classList.toggle('off', !on);
+    if ('inert' in body) body.inert = !on;
     hk.refresh();
+    if (flipHk) flipHk.refresh();
     const n = fillPicker(root.querySelector('.a-model-pick'), S);
     root.querySelector('.a-model-none').hidden = n > 0;
     // Re-render the library only when it changed somewhere else (another window, a reset), not while editing here.
@@ -509,7 +652,54 @@
       lib = (S.actionsLibrary || []).map((a) => Object.assign({}, a));
       renderLib(libList);
     }
+    if (aiBoxSync) aiBoxSync();
   }
+
+  CM.on('actionGenerated', (ev) => {
+    if (!ev || !aiReq || ev.req !== aiReq) return;
+    clearTimeout(aiTimeout);
+    aiTimeout = null;
+    aiReq = null;
+    aiBusy = false;
+    const targetId = aiPendingTargetId;
+    aiPendingTargetId = null;
+    if (ev.error || !ev.action) {
+      aiErrMsg = ev.code === 'noModel' ? t('settings.actions.ai.noModel') : (ev.error || 'Error');
+      if (aiBoxSync) aiBoxSync();
+      return;
+    }
+    aiErrMsg = '';
+    const gen = ev.action;
+    const existing = targetId ? lib.find((x) => x.id === targetId) : null;
+    if (existing) {
+      existing.name = gen.name || existing.name;
+      existing.icon = gen.icon || existing.icon;
+      existing.prompt = gen.prompt || existing.prompt;
+      if (typeof gen.replaces === 'boolean') existing.replaces = gen.replaces;
+      openId = existing.id;
+    } else {
+      const created = {
+        id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name: gen.name || '',
+        icon: gen.icon || 'custom',
+        prompt: gen.prompt || '',
+        replaces: typeof gen.replaces === 'boolean' ? gen.replaces : true,
+        builtin: false,
+      };
+      lib.push(created);
+      openId = created.id;
+    }
+    forceNewAi = false;
+    aiDraft = '';
+    if (aiInputEl) {
+      aiInputEl.value = '';
+      aiInputEl.removeAttribute('dir');
+    }
+    saveLib();
+    if (libList) renderLib(libList);
+    if (aiBoxSync) aiBoxSync();
+    CM.toast(t(existing ? 'settings.actions.ai.updated' : 'settings.actions.ai.created'));
+  });
 
   CM.registerTab('actions', { mount, update });
 })();

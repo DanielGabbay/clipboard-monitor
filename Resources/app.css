@@ -49,7 +49,7 @@ button { font: inherit; font-size: 12px; color: var(--fg); background: transpare
 button:hover { background: var(--panel); border-color: var(--line); }
 button.on { color: var(--accent); border-color: var(--accent); }
 
-main { flex: 1; display: flex; min-height: 0; }
+main { flex: 1; display: flex; min-height: 0; position: relative; }
 #content { flex: 1; overflow: auto; padding: 14px 18px 40px; overflow-wrap: anywhere; }
 /* The clipboard text itself does not follow the UI direction: its containers are LTR and every block inside
    gets its own dir from bidi-fix.js (a dir attribute on a child wins over the inherited direction). The chrome
@@ -110,7 +110,6 @@ pre { background: var(--code-bg); padding: 10px 12px; border-radius: 7px; overfl
 .toast.show { opacity: .92; }
 header { margin-top: var(--pad-t, 0px); }
 body { font-family: var(--font, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Arial Hebrew", sans-serif); }
-.chip.held { background: transparent; color: var(--accent); border: 1px solid currentColor; }
 button.icon { padding: 3px 6px; line-height: 0; }
 button:disabled { opacity: .35; }
 
@@ -167,6 +166,15 @@ html[dir="rtl"] input[dir="ltr"]:placeholder-shown { direction: rtl; text-align:
 .btn.sm, #settings .btn.sm { font-size: 11.5px; padding: 1px 6px; border-radius: 5px; }
 .ghost { border-color: transparent; background: transparent; }
 .ghost:hover { border-color: transparent; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+#settings .hk, #settings .row > .hk { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+#settings .hk-rec { min-width: 74px; font-variant-numeric: tabular-nums; }
+#settings .hk-rec.on { border-color: var(--accent); color: var(--accent); }
+#settings .hk-clear { border: 0; background: none; color: var(--muted); font-size: 15px; line-height: 1; padding: 2px 6px; border-radius: 5px; }
+#settings .hk-clear:hover { color: var(--danger); background: var(--panel); }
+#settings .f-sub { margin-inline-start: 22px; }
+#settings .f-sub .row { padding: 5px 0; font-size: 12.5px; }
+#settings .row.off { opacity: .45; }
+#settings .row.off button:disabled { opacity: 1; }
 
 /* Inline two-step confirm: <div class="confirm"><span>Message</span><button class="btn danger primary">…</button>
    <button class="btn">Cancel</button></div>. No window.confirm. */
@@ -294,3 +302,85 @@ html[lang="he"] :is(#settings h3, .card-title, #history .sec) { letter-spacing: 
 #content details.raw-text { margin-top: 10px; }
 #content details.raw-text > summary { color: var(--muted); font-size: 12px; cursor: default; }
 #content details.raw-text .plain { margin-top: 6px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; font-family: var(--mono); }
+
+/* Compare Guidance Banner */
+.compare-banner {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--chip);
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+
+/* Quick Edit */
+.quick-edit {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 8px;
+}
+.quick-edit textarea {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 13px;
+  resize: none;
+}
+.quick-edit .qe-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Image OCR */
+.ocr-btn {
+  margin-top: 8px;
+}
+.ocr-result {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.ocr-line {
+  margin: 4px 0;
+  line-height: 1.4;
+}
+.ocr-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* cURL Card */
+.curl-body {
+  margin-top: 6px;
+  padding: 6px;
+  background: var(--chip);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 360px) {
+  #settings .tabs { flex-wrap: wrap; gap: 1px 4px; padding: 0 4px; margin: 0 0 6px; }
+  #settings .tabs button { padding: 4px 6px; font-size: 11.5px; }
+  body.show-history #history {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    width: 160px;
+    z-index: 10;
+    background: var(--panel);
+    box-shadow: 0 0 16px rgba(0,0,0,0.2);
+  }
+}

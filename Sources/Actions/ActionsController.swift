@@ -3,18 +3,24 @@ import Carbon
 import WebKit
 import ApplicationServices
 
-// MARK: - Text Actions popover
+// MARK: - Text Actions & Quick Translate popover
 //
 // Select text in any app and open the popover (shortcut, the floating button next to the selection, the Services
 // menu or the menu bar icon): it opens under the selection, lists the actions, runs the chosen one and shows the
-// result in the same place. "Replace" writes the result over the selection (SelectionWriter), "Copy" puts it on
-// the clipboard. The page is Resources/actions.html.
+// result in the same place. Quick Translate (⌃⌥T by default) reads the selection or the paragraph under the
+// pointer (AXTextReader.textAtPointer) and opens directly in translation view with target selector, collapsible
+// source, Copy, Replace (when text was selected), Open in TextMonitor, and Back to all actions. The page is
+// Resources/actions.html.
 //
-// Page -> native: {cmd: "size", h} | {cmd: "close"} | {cmd: "run", id, query?} | {cmd: "copy", text}
-//                 | {cmd: "replace", text} | {cmd: "setModel", value} | {cmd: "openAXSettings"} | {cmd: "openAISettings"}
-// Native -> page: actions.setup({lang, margin}), actions.show({status, ...})
-//   status: "reading" | "list" {source, actions, models, model, canReplace} | "running" {id}
-//         | "result" {id, text, canReplace} | "error" {detail, code} | "noText" | "secure" | "permission" | "ignored"
+// Page -> native: {cmd: "size", h} | {cmd: "close"} | {cmd: "run", id, query?, messages?} | {cmd: "back"}
+//                 | {cmd: "copy", text} | {cmd: "replace", text} | {cmd: "setModel", value} | {cmd: "set", key, value}
+//                 | {cmd: "open", url} | {cmd: "actions.generate", req, request, existing?} | {cmd: "saveCustomAction", action}
+//                 | {cmd: "openInMonitor"} | {cmd: "openAXSettings"} | {cmd: "openAISettings"}
+// Native -> page: actions.setup({lang, margin, target, targets}), actions.show({status, ...}), actions.generated(...)
+//   status: "reading" | "loading" | "list" {source, actions, models, model, canReplace} | "running" {id, query}
+//         | "streaming" {id, text} | "result" {id, text, canReplace}
+//         | "quickTranslate" {state, source, text?, detail?, same?, target, targets, canReplace}
+//         | "error" {id, detail, code} | "noText" | "secure" | "permission" | "ignored"
 
 private final class ActionsMessageProxy: NSObject, WKScriptMessageHandler {
     weak var target: ActionsController?
@@ -78,6 +84,13 @@ final class ActionsController: NSObject, WKNavigationDelegate {
         instance().begin(.text(text, targetPid), fixedAnchor: nil)
     }
 
+    /// Translate at Pointer shortcut / menu: translate the selection or hovered paragraph directly, or close if open.
+    static func toggleQuickTranslate() {
+        if let s = shared, s.panel.isVisible { s.close(); return }
+        guard Settings.bool("f.bubble"), Settings.bool("f.translate") else { return }
+        instance().beginQuickTranslate()
+    }
+
     private static func instance() -> ActionsController {
         let c = shared ?? ActionsController()
         shared = c
@@ -98,6 +111,8 @@ final class ActionsController: NSObject, WKNavigationDelegate {
     private var contentHeight: CGFloat = 160
     private var selection: TextSelection?
     private var generation = 0
+    private var runTask: Task<Void, Never>?
+    private var translationCache: [String: LineResult] = [:]
 
     private override init() {
         let cfg = WKWebViewConfiguration()
@@ -132,7 +147,20 @@ final class ActionsController: NSObject, WKNavigationDelegate {
         return CGPoint(x: m.x, y: primaryHeight - m.y)
     }
 
+    private func sendSetup() {
+        let sendTo = (NSApp.delegate as? AppDelegate)?.detectedSendToApps() ?? []
+        call("actions.setup", [
+            "lang": Loc.lang,
+            "margin": Self.margin,
+            "target": Settings.string("lensTarget"),
+            "targets": Settings.string("translateTargets"),
+            "sendToApps": sendTo,
+        ])
+    }
+
     private func begin(_ source: Source, fixedAnchor: CGRect?) {
+        runTask?.cancel()
+        runTask = nil
         SelectionWatcher.shared.hideButton()
         let point = Self.pointer()
         anchor = fixedAnchor ?? CGRect(origin: point, size: .zero)
@@ -140,7 +168,7 @@ final class ActionsController: NSObject, WKNavigationDelegate {
         selection = nil
         generation += 1
         let gen = generation
-        call("actions.setup", ["lang": Loc.lang, "margin": Self.margin])
+        sendSetup()
 
         let target = (NSApp.delegate as? AppDelegate)?.externalApp
         switch source {
@@ -164,14 +192,14 @@ final class ActionsController: NSObject, WKNavigationDelegate {
             present(["status": "reading"], key: false)
             let frontPid = target?.processIdentifier
             axQueue.async {
-                let result = Self.read(frontPid: frontPid, pointer: point)
+                let result = Self.readSelection(frontPid: frontPid, pointer: point)
                 DispatchQueue.main.async { ActionsController.shared?.didRead(result, gen: gen) }
             }
         }
     }
 
     /// Accessibility first; Chromium / Electron get their tree switched on and a second look; then ⌘C.
-    nonisolated private static func read(frontPid: pid_t?, pointer: CGPoint) -> SelectionRead {
+    nonisolated static func readSelection(frontPid: pid_t?, pointer: CGPoint) -> SelectionRead {
         let me = getpid()
         var r = SelectionReader.read(frontPid: frontPid, pointer: pointer, excluding: me)
         guard case .none = r, let pid = frontPid, pid != me else { return r }
@@ -194,6 +222,129 @@ final class ActionsController: NSObject, WKNavigationDelegate {
         }
         guard let copied else { return .none }
         return .found(TextSelection(text: copied, raw: copied, anchor: CGRect(origin: pointer, size: .zero), pid: pid, element: nil))
+    }
+
+    private func beginQuickTranslate() {
+        runTask?.cancel()
+        runTask = nil
+        SelectionWatcher.shared.hideButton()
+        let point = Self.pointer()
+        anchor = CGRect(origin: point, size: .zero)
+        anchorFixed = false
+        selection = nil
+        generation += 1
+        let gen = generation
+        sendSetup()
+
+        guard AXTextReader.trusted else {
+            AXTextReader.requestTrust()
+            present(["status": "permission", "mode": "quickTranslate"], key: true)
+            return
+        }
+        present(["status": "reading", "mode": "quickTranslate"], key: false)
+        let frontPid = (NSApp.delegate as? AppDelegate)?.externalApp?.processIdentifier
+        axQueue.async {
+            let result = Self.readQuickTranslate(frontPid: frontPid, pointer: point)
+            DispatchQueue.main.async { ActionsController.shared?.didReadQuickTranslate(result, gen: gen) }
+        }
+    }
+
+    /// Pointer text (nearby selection or hovered paragraph), with Chromium manual-AX retry and AX-only selection fallback.
+    nonisolated private static func readQuickTranslate(frontPid: pid_t?, pointer: CGPoint) -> SelectionRead {
+        let me = getpid()
+        var found = AXTextReader.textAtPointer(pointer, excluding: me)
+        // Chromium / Electron build their tree on request: ask, wait a moment and look again.
+        if found == nil,
+           let pid = AXTextReader.windowUnder(CGRect(origin: pointer, size: CGSize(width: 1, height: 1)), excluding: me)?.pid,
+           pid != me, AXTextReader.enableManualAccessibility(pid) {
+            Thread.sleep(forTimeInterval: 0.4)
+            found = AXTextReader.textAtPointer(pointer, excluding: me)
+        }
+        if let found {
+            return .found(TextSelection(text: found.text, raw: found.raw, anchor: found.anchor,
+                                        pid: found.pid, element: found.element,
+                                        canReplace: found.isSelection && found.pid != 0))
+        }
+        // When opened from the menu bar, the pointer is on the menu bar: fall back to the focused AX selection (never ⌘C).
+        return SelectionReader.read(frontPid: frontPid, pointer: pointer, excluding: me)
+    }
+
+    private func didReadQuickTranslate(_ result: SelectionRead, gen: Int) {
+        guard gen == generation, panel.isVisible else { return }
+        switch result {
+        case .none:
+            present(["status": "noText", "mode": "quickTranslate"], key: true)
+        case .secure:
+            present(["status": "secure", "mode": "quickTranslate"], key: true)
+        case .found(let sel):
+            if sel.pid != 0, let app = NSRunningApplication(processIdentifier: sel.pid),
+               (NSApp.delegate as? AppDelegate)?.isIgnored(app) == true {
+                present(["status": "ignored", "mode": "quickTranslate"], key: true)
+                return
+            }
+            selection = sel
+            // A huge anchor (a whole text view) says little about where the text is: stay at the pointer.
+            if !anchorFixed, (sel.anchor.width > 0 || sel.anchor.height > 0), sel.anchor.height < 320 {
+                anchor = sel.anchor
+                if panel.isVisible { place() }
+            }
+            translateQuick()
+        }
+    }
+
+    private func translateQuick() {
+        guard let sel = selection else { return }
+        runTask?.cancel()
+        runTask = nil
+        generation += 1
+        let gen = generation
+        let target = Settings.string("lensTarget")
+        let targets = Settings.string("translateTargets")
+        let key = target + "\u{1}" + sel.text
+        if let hit = translationCache[key] {
+            showQuickTranslate(hit, sel: sel, target: target, targets: targets)
+            return
+        }
+        present([
+            "status": "quickTranslate",
+            "state": "translating",
+            "source": sel.text,
+            "target": target,
+            "targets": targets,
+            "canReplace": sel.canReplace,
+        ], key: true)
+        Task { @MainActor in
+            let result = await LineTranslator.translate([sel.text], target: target).first ?? .failed("")
+            guard let me = ActionsController.shared, me === self, gen == me.generation, me.panel.isVisible else { return }
+            if case .failed = result {} else {
+                if me.translationCache.count > 500 { me.translationCache.removeAll() }
+                me.translationCache[key] = result
+            }
+            me.showQuickTranslate(result, sel: sel, target: target, targets: targets)
+        }
+    }
+
+    private func showQuickTranslate(_ r: LineResult, sel: TextSelection, target: String, targets: String) {
+        var msg: [String: Any] = [
+            "status": "quickTranslate",
+            "source": sel.text,
+            "target": target,
+            "targets": targets,
+            "canReplace": sel.canReplace,
+        ]
+        switch r {
+        case .text(let t):
+            msg["state"] = "ok"
+            msg["text"] = t
+        case .same:
+            msg["state"] = "same"
+            msg["same"] = true
+            msg["text"] = sel.text
+        case .failed(let why):
+            msg["state"] = "error"
+            msg["detail"] = why
+        }
+        present(msg, key: true)
     }
 
     private func didRead(_ result: SelectionRead, gen: Int) {
@@ -224,29 +375,79 @@ final class ActionsController: NSObject, WKNavigationDelegate {
         guard let sel = selection else { return }
         let current = TextActions.model().map { $0.providerId + "\n" + $0.model } ?? ""
         present(["status": "list", "source": sel.text, "actions": TextActions.listForPage(),
-                 "models": TextActions.modelsForPage(), "model": current, "canReplace": sel.pid != 0], key: true)
+                 "models": TextActions.modelsForPage(), "model": current, "canReplace": sel.canReplace], key: true)
     }
 
-    private func run(_ id: String, query: String?) {
+    private func run(_ id: String, query: String?, messages: [[String: String]]? = nil) {
         guard let sel = selection else { return }
+        runTask?.cancel()
+        runTask = nil
         generation += 1
         let gen = generation
-        present(["status": "running", "id": id, "query": query ?? ""], key: true)
         let appName = sel.pid != 0 ? NSRunningApplication(processIdentifier: sel.pid)?.localizedName : nil
         let started = Date()
         // The log entry; the request is kept even when the popover was closed before the answer came.
         var entry: [String: Any] = ["action": id, "query": query ?? "", "app": appName ?? "", "source": sel.text,
                                     "title": TextActions.library().first { $0.id == id }?.name ?? ""]
-        Task { @MainActor in
+        if let localOut = TextActions.runLocal(id: id, text: sel.text) {
+            entry["result"] = localOut
+            entry["model"] = ""
+            entry["ms"] = 0
+            ActionLog.add(entry)
+            present(["status": "result", "id": id, "text": localOut, "canReplace": sel.canReplace], key: true)
+            return
+        }
+        present(["status": "running", "id": id, "query": query ?? ""], key: true)
+        if id.hasPrefix("translate:") && (messages == nil || messages!.isEmpty) {
+            runTask = Task { @MainActor in
+                do {
+                    let res = try await TextActions.run(id: id, query: query, text: sel.text, app: appName)
+                    try Task.checkCancellation()
+                    let out = res.text
+                    entry["result"] = out; entry["model"] = res.model
+                    entry["ms"] = Int(Date().timeIntervalSince(started) * 1000)
+                    ActionLog.add(entry)
+                    guard let me = ActionsController.shared, me === self, gen == me.generation, me.panel.isVisible else { return }
+                    me.present(["status": "result", "id": id, "text": out, "canReplace": sel.canReplace], key: true)
+                } catch {
+                    if error is CancellationError || Task.isCancelled { return }
+                    entry["error"] = error.localizedDescription
+                    entry["ms"] = Int(Date().timeIntervalSince(started) * 1000)
+                    ActionLog.add(entry)
+                    guard let me = ActionsController.shared, me === self, gen == me.generation, me.panel.isVisible else { return }
+                    let code = (error as? ActionFailure)?.code ?? ""
+                    me.present(["status": "error", "id": id, "detail": error.localizedDescription, "code": code], key: true)
+                }
+            }
+            return
+        }
+        runTask = Task { @MainActor in
             do {
-                let res = try await TextActions.run(id: id, query: query, text: sel.text, app: appName)
-                let out = res.text
-                entry["result"] = out; entry["model"] = res.model
+                let (stream, modelName) = try TextActions.runStream(id: id, query: query, messages: messages, text: sel.text, app: appName)
+                var accumulated = ""
+                var lastEmit = Date.distantPast
+                var didEmitStream = false
+                for try await chunk in stream {
+                    try Task.checkCancellation()
+                    accumulated += chunk
+                    let now = Date()
+                    if !accumulated.isEmpty && (!didEmitStream || now.timeIntervalSince(lastEmit) >= 0.05) {
+                        guard let me = ActionsController.shared, me === self, gen == me.generation, me.panel.isVisible else { break }
+                        didEmitStream = true
+                        lastEmit = now
+                        me.call("actions.show", ["status": "streaming", "id": id, "text": accumulated])
+                    }
+                }
+                try Task.checkCancellation()
+                let result = accumulated.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !result.isEmpty else { throw ActionFailure(code: "", message: "The model returned an empty answer") }
+                entry["result"] = result; entry["model"] = modelName
                 entry["ms"] = Int(Date().timeIntervalSince(started) * 1000)
                 ActionLog.add(entry)
                 guard let me = ActionsController.shared, me === self, gen == me.generation, me.panel.isVisible else { return }
-                me.present(["status": "result", "id": id, "text": out, "canReplace": sel.pid != 0], key: true)
+                me.present(["status": "result", "id": id, "text": result, "canReplace": sel.canReplace], key: true)
             } catch {
+                if error is CancellationError || Task.isCancelled { return }
                 entry["error"] = error.localizedDescription
                 entry["ms"] = Int(Date().timeIntervalSince(started) * 1000)
                 ActionLog.add(entry)
@@ -259,7 +460,7 @@ final class ActionsController: NSObject, WKNavigationDelegate {
 
     /// Writes `text` over the selection: through accessibility when the app allows it, else by pasting.
     private func replace(with text: String) {
-        guard let sel = selection, sel.pid != 0 else { return }
+        guard let sel = selection, sel.canReplace, sel.pid != 0 else { return }
         close()
         axQueue.async {
             let done = SelectionWriter.replaceViaAccessibility(sel, with: text)
@@ -268,8 +469,11 @@ final class ActionsController: NSObject, WKNavigationDelegate {
     }
 
     func close() {
+        runTask?.cancel()
+        runTask = nil
         monitors.forEach { NSEvent.removeMonitor($0) }
         monitors.removeAll()
+        selection = nil
         generation += 1
         panel.orderOut(nil)
     }
@@ -331,6 +535,17 @@ final class ActionsController: NSObject, WKNavigationDelegate {
         queued.forEach { web.evaluateJavaScript($0, completionHandler: nil) }
     }
 
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if action.navigationType == .linkActivated, let url = action.request.url {
+            if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" || scheme == "mailto" {
+                NSWorkspace.shared.open(url)
+            }
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
     fileprivate func handle(_ message: WKScriptMessage) {
         guard let body = message.body as? [String: Any], let cmd = body["cmd"] as? String else { return }
         let app = NSApp.delegate as? AppDelegate
@@ -342,19 +557,61 @@ final class ActionsController: NSObject, WKNavigationDelegate {
             }
         case "close": close()
         case "run":
-            if let id = body["id"] as? String { run(id, query: body["query"] as? String) }
-        case "back": generation += 1; showList()
+            if let id = body["id"] as? String {
+                let rawMsgs = body["messages"] as? [[String: Any]]
+                let msgs: [[String: String]]? = rawMsgs?.compactMap { m in
+                    guard let role = m["role"] as? String, let content = m["content"] as? String else { return nil }
+                    return ["role": role, "content": content]
+                }
+                run(id, query: body["query"] as? String, messages: msgs)
+            }
+        case "back":
+            runTask?.cancel()
+            runTask = nil
+            generation += 1
+            showList()
         case "copy":
             if let t = body["text"] as? String { app?.writeClipboard(t) }
             close()
+        case "sendTo":
+            if let target = body["app"] as? String, let text = body["text"] as? String {
+                app?.sendText(text, toApp: target)
+                close()
+            }
         case "replace":
             if let t = body["text"] as? String { replace(with: t) }
+        case "open":
+            if let s = body["url"] as? String, let url = URL(string: s),
+               let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" || scheme == "mailto" {
+                NSWorkspace.shared.open(url)
+            }
+        case "actions.generate":
+            let req = (body["req"] as? String) ?? ""
+            let request = (body["request"] as? String) ?? ""
+            let existing = body["existing"] as? [String: Any]
+            Task { @MainActor [weak self] in
+                do {
+                    let action = try await TextActions.generateAction(request: request, existing: existing)
+                    self?.call("actions.generated", ["req": req, "action": action])
+                } catch {
+                    let code = (error as? ActionFailure)?.code ?? ""
+                    self?.call("actions.generated", ["req": req, "error": error.localizedDescription, "code": code])
+                }
+            }
+        case "saveCustomAction":
+            _ = TextActions.saveCustomAction(body)
         case "setModel":
             if let v = body["value"] as? String {
                 let parts = v.components(separatedBy: "\n")
                 app?.setSetting("actionsProvider", parts.first ?? "")
                 app?.setSetting("actionsModel", parts.dropFirst().joined(separator: "\n"))
             }
+        case "set":
+            if let k = body["key"] as? String, let v = body["value"] {
+                app?.setSetting(k, v)
+                if k == "lensTarget", selection != nil { translateQuick() }
+            }
+        case "openInMonitor": openInMonitor()
         case "openAXSettings": AXTextReader.openAccessibilitySettings(); close()
         case "openAISettings":
             close()
@@ -363,5 +620,25 @@ final class ActionsController: NSObject, WKNavigationDelegate {
             NSApp.activate(ignoringOtherApps: true)
         default: break
         }
+    }
+
+    /// Puts the source text in the TextMonitor history and translates it there with the same target.
+    private func openInMonitor() {
+        guard let sel = selection, let d = NSApp.delegate as? AppDelegate else { return }
+        var item: [String: Any] = [
+            "id": UUID().uuidString,
+            "time": Date().timeIntervalSince1970 * 1000,
+            "kind": "text",
+            "text": sel.text,
+            "translateTo": Settings.string("lensTarget"),
+        ]
+        if sel.pid != 0, let appName = NSRunningApplication(processIdentifier: sel.pid)?.localizedName {
+            item["app"] = appName
+        }
+        if d.controllers.isEmpty { d.newWindow(nil) }
+        d.controllers.forEach { $0.call("monitor.push", item) }
+        d.current?.window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        close()
     }
 }

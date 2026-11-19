@@ -26,6 +26,16 @@ enum SelectionWriter {
 
     /// Main thread. Brings the app forward, pastes `text` over its selection and restores the pasteboard.
     @MainActor
+    static func replaceFrontmost(with text: String) -> Bool {
+        if let sel = SelectionReader.readFrontmostSelection() {
+            if replaceViaAccessibility(sel, with: text) { return true }
+            replaceViaPaste(pid: sel.pid, with: text)
+            return true
+        }
+        return false
+    }
+
+    @MainActor
     static func replaceViaPaste(pid: pid_t, with text: String) {
         guard let d = NSApp.delegate as? AppDelegate else { return }
         d.suppressClipboard(for: 2.0)

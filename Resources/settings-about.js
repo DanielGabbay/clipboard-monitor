@@ -159,7 +159,7 @@
     wrap.appendChild(row(t('settings.about.os'), info.os || t('settings.about.unknown')));
 
     const btns = h('div', 'row-btns');
-    const copyBtn = h('button', 'btn about-copy', t('settings.about.copyInfo'));
+    const copyBtn = h('button', 'btn', t('settings.about.copyInfo'));
     copyBtn.onclick = () => { CM.native({ cmd: 'copy', text: plainInfo(info) }); CM.toast(t('settings.about.copied')); };
     btns.appendChild(copyBtn);
     wrap.appendChild(btns);

@@ -19,15 +19,8 @@ enum TranslationRouter {
             AppleTranslator.translate(text, req: req, target: target, for: c)
             return
         }
-        let providerId = Settings.string("translateProvider"), model = Settings.string("translateModel")
+        let (providerId, model, why) = resolveLLM()
         let fallback = Settings.bool("translateFallbackApple")
-        var why: String?
-        if let p = AIService.shared.provider(providerId) {
-            if !p.enabled { why = "AI provider \"\(p.name)\" is turned off" }
-            else if !p.models.contains(where: { $0.id == model }) { why = model.isEmpty ? "No AI model chosen for translation" : "Model \(model) not found" }
-        } else {
-            why = "No AI provider chosen for translation"
-        }
         if let why {
             if fallback { AppleTranslator.translate(text, req: req, target: target, for: c, extra: ["fallbackFrom": why]) }
             else { c.call("monitor.translated", ["req": req, "from": from, "to": to, "engine": "llm", "model": model, "error": why]) }
@@ -51,6 +44,24 @@ enum TranslationRouter {
                 }
             }
         }
+    }
+
+    static func validateLLM(providerId: String, model: String) -> String? {
+        guard let p = AIService.shared.provider(providerId) else { return "No AI provider chosen for translation" }
+        if !p.enabled { return "AI provider \"\(p.name)\" is turned off" }
+        if model.isEmpty { return "No AI model chosen for translation" }
+        guard let m = p.models.first(where: { $0.id == model }) else { return "Model \(model) not found" }
+        if m.missing { return "Model \(model) is missing" }
+        if m.hidden { return "Model \(model) is hidden" }
+        return nil
+    }
+
+    static func resolveLLM() -> (providerId: String, model: String, error: String?) {
+        let providerId = Settings.string("translateProvider"), model = Settings.string("translateModel")
+        let why = validateLLM(providerId: providerId, model: model)
+        if why == nil { return (providerId, model, nil) }
+        if let fallbackModel = TextActions.model() { return (fallbackModel.providerId, fallbackModel.model, nil) }
+        return (providerId, model, why)
     }
 
     static func systemPrompt(to: String) -> String {
@@ -108,13 +119,20 @@ enum AppleTranslator {
         func reply(_ result: [String: Any]) {
             c.call("monitor.translated", ["req": req].merging(pair) { a, _ in a }.merging(extra) { a, _ in a }.merging(result) { a, _ in a })
         }
+        func replyFailure(_ appleError: String) {
+            if let llmErr = extra["fallbackFrom"] as? String, !llmErr.isEmpty {
+                c.call("monitor.translated", ["req": req, "from": from, "to": to, "engine": "llm", "error": llmErr])
+            } else {
+                reply(["error": appleError])
+            }
+        }
 
         // Already in the target language: nothing to translate.
         if source.minimalIdentifier == targetLang.minimalIdentifier { reply(["text": text]); return }
-        guard #available(macOS 26.0, *) else { reply(["error": "unsupported"]); return }
+        guard #available(macOS 26.0, *) else { replyFailure("unsupported"); return }
         Task { @MainActor in
             let status = await LanguageAvailability().status(from: source, to: targetLang)
-            guard status == .installed else { reply(["error": status == .supported ? "notInstalled" : "unsupported"]); return }
+            guard status == .installed else { replyFailure(status == .supported ? "notInstalled" : "unsupported"); return }
             do {
                 let session = TranslationSession(installedSource: source, target: targetLang)
                 // Translate only prose lines; keep fences, blank lines and Markdown prefixes as they are.
@@ -139,7 +157,7 @@ enum AppleTranslator {
                 }
                 reply(["text": lines.joined(separator: "\n")])
             } catch {
-                reply(["error": error.localizedDescription])
+                replyFailure(error.localizedDescription)
             }
         }
     }
@@ -179,15 +197,10 @@ enum LineTranslator {
             for (i, r) in await apple(pending) { results[i] = r }
             return results
         }
-        let providerId = Settings.string("translateProvider"), model = Settings.string("translateModel")
+        let (providerId, model, why) = TranslationRouter.resolveLLM()
         let fallback = Settings.bool("translateFallbackApple")
-        var why: String?
-        if let p = AIService.shared.provider(providerId) {
-            if !p.enabled { why = "AI provider \"\(p.name)\" is turned off" }
-            else if model.isEmpty { why = "No AI model chosen for translation" }
-        } else {
-            why = "No AI provider chosen for translation"
-        }
+        var llmError: String? = why
+        var llmErrors: [Int: String] = [:]
         var appleItems: [(index: Int, text: String, from: String, to: String)] = []
         if let why {
             if fallback { appleItems = pending } else { pending.forEach { results[$0.index] = .failed(why) } }
@@ -200,12 +213,23 @@ enum LineTranslator {
                         let out = try await llm(chunk.map { $0.text }, to: to, providerId: providerId, model: model)
                         for (k, item) in chunk.enumerated() { results[item.index] = .text(out[k]) }
                     } catch {
-                        if fallback { appleItems += chunk } else { chunk.forEach { results[$0.index] = .failed(error.localizedDescription) } }
+                        let err = error.localizedDescription
+                        if llmError == nil { llmError = err }
+                        chunk.forEach { llmErrors[$0.index] = err }
+                        if fallback { appleItems += chunk } else { chunk.forEach { results[$0.index] = .failed(err) } }
                     }
                 }
             }
         }
-        if !appleItems.isEmpty { for (i, r) in await apple(appleItems) { results[i] = r } }
+        if !appleItems.isEmpty {
+            for (i, r) in await apple(appleItems) {
+                if case .failed = r, let err = llmErrors[i] ?? llmError, !err.isEmpty {
+                    results[i] = .failed(err)
+                } else {
+                    results[i] = r
+                }
+            }
+        }
         return results
     }
 

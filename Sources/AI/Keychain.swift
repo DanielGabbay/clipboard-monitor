@@ -39,14 +39,23 @@ enum AIKeychain {
         return String(data: data, encoding: .utf8)
     }
 
-    /// True only when the Keychain says the item does not exist (attributes query; the secret is not read).
-    /// Other failures, such as an access-control mismatch, are not treated as "missing".
-    static func isMissing(account: String) -> Bool {
+    private static func attributesStatus(account: String) -> OSStatus {
         var q = query(account)
         q[kSecReturnAttributes as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: CFTypeRef?
-        return SecItemCopyMatching(q as CFDictionary, &out) == errSecItemNotFound
+        return SecItemCopyMatching(q as CFDictionary, &out)
+    }
+
+    /// True only when the Keychain says the item does not exist (attributes query; the secret is not read).
+    /// Other failures, such as an access-control mismatch, are not treated as "missing".
+    static func isMissing(account: String) -> Bool {
+        attributesStatus(account: account) == errSecItemNotFound
+    }
+
+    /// True when the Keychain item exists (attributes query; the secret is not read and no prompt is shown).
+    static func exists(account: String) -> Bool {
+        attributesStatus(account: account) == errSecSuccess
     }
 
     static func delete(account: String) {

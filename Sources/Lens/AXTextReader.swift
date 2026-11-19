@@ -272,14 +272,17 @@ enum AXTextReader {
         return n
     }
 
-    // MARK: text at the pointer (Translate at Pointer bubble)
+    // MARK: text at the pointer (Quick Translate)
 
-    /// What the bubble translates: the selection when the pointer is on or near it, else the paragraph under the
-    /// pointer. `anchor` is where the text sits on screen (global, top-left based).
-    struct PointerText: Sendable {
+    /// What Quick Translate translates: the selection when the pointer is on or near it, else the paragraph under
+    /// the pointer. `anchor` is where the text sits on screen (global, top-left based).
+    struct PointerText: @unchecked Sendable {
         let text: String
+        let raw: String
         let anchor: CGRect
         let pid: pid_t
+        let element: AXUIElement?
+        let isSelection: Bool
     }
 
     static let maxPointerText = 4000
@@ -297,7 +300,7 @@ enum AXTextReader {
         guard let found = text(at: el, point: p) else { return nil }
         let clean = String(tidy(found.0).prefix(maxPointerText))
         guard clean.contains(where: { $0.isLetter }) else { return nil }
-        return PointerText(text: clean, anchor: found.1, pid: pid)
+        return PointerText(text: clean, raw: found.0, anchor: found.1, pid: pid, element: nil, isSelection: false)
     }
 
     /// Selected text of the focused element, when the pointer is on it or close to it (a selection left behind in
@@ -321,7 +324,9 @@ enum AXTextReader {
         // Without bounds, trust the selection only when the pointer is inside the focused element.
         let near = anchor ?? frame(of: focused) ?? .null
         guard !near.isNull, near.insetBy(dx: -60, dy: -60).contains(p) else { return nil }
-        return PointerText(text: String(text.prefix(maxPointerText)), anchor: anchor ?? CGRect(origin: p, size: .zero), pid: pid)
+        return PointerText(text: String(text.prefix(maxPointerText)), raw: selected,
+                           anchor: anchor ?? CGRect(origin: p, size: .zero), pid: pid,
+                           element: focused, isSelection: true)
     }
 
     /// The paragraph that contains `el`, or its own text.

@@ -31,23 +31,40 @@
     <div class="head">
       <button id="back" class="tb" data-i18n-title="actions.back.title" hidden><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="flip" d="M10 3L5 8l5 5"/></svg></button>
       <span id="title" class="name" dir="auto"></span>
+      <select id="target" dir="auto" data-i18n-title="actions.qt.target.title" hidden></select>
       <span class="grow"></span>
+      <button id="open-monitor" class="tb" data-i18n-title="actions.qt.open.title" hidden disabled><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2.5h4.5V7M13.5 2.5 7.5 8.5M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"/></svg></button>
       <button id="close" class="tb" data-i18n-title="actions.close.title"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
     </div>
     <div class="body">
       <div id="text" class="text"></div>
+      <div id="edit-wrap" hidden><textarea id="edit-area" rows="6" spellcheck="true"></textarea></div>
       <div id="status" class="status"></div>
       <button id="link" class="link" hidden></button>
+      <details id="src" class="qt-src" hidden><summary data-i18n="actions.qt.source">Original</summary><div id="srctext" class="srctext"></div></details>
+    </div>
+    <div id="save-bar" class="save-bar" hidden>
+      <button id="save-action" class="link" type="button" data-i18n="actions.saveAction">＋ Save as permanent action</button>
+    </div>
+    <div id="followup-row" class="followup" hidden>
+      <input id="followup-input" type="text" autocomplete="off" data-i18n-placeholder="actions.followup.ph">
+      <button id="followup-send" class="btn sm primary" type="button" data-i18n="actions.followup.send">Send</button>
     </div>
     <div class="foot" id="result-foot" hidden>
       <button id="replace" class="btn" data-i18n="actions.replace">Replace</button>
       <button id="copy" class="btn" data-i18n="actions.copy">Copy</button>
+      <button id="sendto" class="btn sm" type="button" data-i18n="actions.sendTo" hidden>Send to…</button>
+      <button id="diff" class="btn sm" type="button" aria-pressed="false" data-i18n="actions.diff" data-i18n-title="actions.diff.title" hidden>Diff</button>
+      <button id="edit" class="btn sm" type="button" aria-pressed="false" data-i18n="actions.edit" data-i18n-title="actions.edit.title" hidden>Edit</button>
       <span class="grow"></span>
       <span class="keys" id="primary-key"><kbd>↵</kbd> <span id="primary-label"></span></span>
     </div>
+    <div id="sendto-menu" role="menu" class="sendto-menu" hidden></div>
   </div>
 </div>
 <script src="i18n.js"></script>
+<script src="marked.min.js"></script>
+<script src="bidi-fix.js"></script>
 <script src="actions-shared.js"></script>
 <script src="actions.js"></script>
 </body>

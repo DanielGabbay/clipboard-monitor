@@ -17,6 +17,8 @@ I18N.register({ en: {
 
   // content
   'empty.copy': 'Copy something…',
+  'content.ocr': 'Extract text (OCR)',
+  'content.ocrExtracting': 'Extracting text…',
   'content.image': 'Image {size}',
   'content.imageHidden': 'Image {size} (hidden in Settings)',
   'content.secret': 'Hidden: the app you copied from marked this as a password or secret.',
@@ -33,6 +35,7 @@ I18N.register({ en: {
 
   // smart cards
   'smart.clickToCopy': 'Click to copy',
+  'smart.cron': 'Cron', 'smart.curl': 'cURL',
   'smart.jwt': 'JWT', 'smart.jwt.expired': 'Expired {when}', 'smart.jwt.valid': 'Valid, expires {when}',
   'smart.jwt.header': 'Header', 'smart.jwt.payload': 'Payload', 'smart.jwt.unverified': 'Signature is not verified.',
   'smart.link': 'Link', 'smart.link.host': 'host', 'smart.link.path': 'path', 'smart.link.hash': 'hash',
@@ -64,16 +67,27 @@ I18N.register({ en: {
   'menu.openInWindow': 'Open in New Window', 'menu.follow': 'Follow the Clipboard', 'menu.hold': 'Hold This Item',
   'menu.show': 'Show', 'menu.showRendered': 'Show Rendered', 'menu.showRaw': 'Show Raw Text',
   'menu.compareWithShown': 'Compare with Shown Item', 'menu.closeCompare': 'Close Comparison', 'menu.delete': 'Delete',
+  'menu.sendTo': 'Send to…', 'menu.translate': 'Translate',
+
+  // quick edit
+  'edit.save': 'Save', 'edit.cancel': 'Cancel',
 
   // toasts
   'toast.copied': 'Copied', 'toast.copiedRtl': 'Copied with RTL marks',
   'toast.holding': 'Holding this item', 'toast.following': 'Following the clipboard',
   'toast.appearance': 'Appearance: {theme}',
 
+  // hotkey recorder
+  'hotkey.off': 'Off',
+  'hotkey.recording': 'Press the shortcut…',
+  'hotkey.needMod': 'Include ⌃, ⌥ or ⌘',
+  'hotkey.clear': 'Turn the shortcut off',
+  'hotkey.taken': 'That shortcut is already in use. The previous one was kept.',
+
   // settings shell
   'settings.title': 'Settings', 'settings.done': 'Done', 'settings.done.title': 'Close (Esc)',
   'settings.tab.general': 'General', 'settings.tab.content': 'Content', 'settings.tab.history': 'History',
-  'settings.tab.features': 'Features', 'settings.tab.translate': 'Translation', 'settings.tab.ai': 'AI', 'settings.tab.about': 'About',
+  'settings.tab.translate': 'Translation', 'settings.tab.ai': 'AI', 'settings.tab.about': 'About',
 
   // General tab
   'settings.general.language': 'Language',
@@ -91,7 +105,7 @@ I18N.register({ en: {
   'settings.general.newWindow': 'New window', 'settings.general.newTab': 'New tab',
   'settings.general.startup': 'Startup & shortcut',
   'settings.general.loginItem': 'Launch at login',
-  'settings.general.hotkey': 'Show / hide shortcut', 'settings.general.hotkey.hint': 'Works from any app.', 'settings.general.hotkey.off': 'Off',
+  'settings.general.hotkey': 'Show / hide shortcut', 'settings.general.hotkey.hint': 'Works from any app.',
 
   // Content tab
   'settings.content.rendering': 'Rendering',
@@ -102,6 +116,31 @@ I18N.register({ en: {
   'settings.content.detect.hint': "Majority: a line is RTL when enough of its letters are Hebrew. First letter: the browser's own dir=auto rule.",
   'settings.content.detect.majority': 'Majority', 'settings.content.detect.first': 'First letter',
   'settings.content.ratio': 'Hebrew threshold for RTL', 'settings.content.ratio.value': '{pct}% of the letters',
+  'settings.content.copyRtl': 'Copy with RTL marks',
+  'settings.content.copyRtl.hint': 'The Copy RTL button and menu entries (adds direction marks to Hebrew lines).',
+  'settings.content.tools': 'Smart cards & tools',
+  'settings.content.smartCards': 'Smart cards',
+  'settings.content.smartCards.hint': 'Recognize special content and show a card with details under it.',
+  'settings.content.smartJwt': 'JWT',
+  'settings.content.smartJwt.hint': 'Decode the header and payload, show expiry.',
+  'settings.content.smartJson': 'JSON explorer',
+  'settings.content.smartJson.hint': 'Collapsible tree with a path filter.',
+  'settings.content.smartColor': 'Colors',
+  'settings.content.smartColor.hint': 'Swatch and HEX / RGB / HSL / Swift values.',
+  'settings.content.smartTime': 'Dates and timestamps',
+  'settings.content.smartTime.hint': 'Unix seconds / milliseconds and ISO 8601 as a readable date.',
+  'settings.content.smartBase64': 'Base64',
+  'settings.content.smartBase64.hint': 'Decode Base64 that turns into readable text.',
+  'settings.content.smartLink': 'Links',
+  'settings.content.smartLink.hint': 'Host, path and query parameters of a copied URL.',
+  'settings.content.smartCron': 'Cron expressions',
+  'settings.content.smartCron.hint': 'Explain cron schedules in plain words and show the next runs.',
+  'settings.content.smartCurl': 'curl commands',
+  'settings.content.smartCurl.hint': 'Parse URL, method, headers and body of a copied curl command.',
+  'settings.content.linkPreview': 'Link preview',
+  'settings.content.linkPreview.hint': 'A “Load preview” button on link cards. The page is fetched only when you click it.',
+  'settings.content.compare': 'Compare',
+  'settings.content.compare.hint': 'Show the differences between two history items.',
 
   // History tab
   'settings.history.title': 'History & privacy',

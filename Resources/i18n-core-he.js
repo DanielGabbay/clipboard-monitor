@@ -32,6 +32,8 @@ I18N.register({ he: {
 
   // content
   'empty.copy': 'העתק משהו…',
+  'content.ocr': 'חלץ טקסט (OCR)',
+  'content.ocrExtracting': 'מחלץ טקסט…',
   'content.image': 'תמונה {size}',
   'content.imageHidden': 'תמונה {size} (מוסתרת בהגדרות)',
   'content.secret': 'מוסתר: היישום שממנו הועתק התוכן סימן אותו כסיסמה או כסוד.',
@@ -48,6 +50,7 @@ I18N.register({ he: {
 
   // smart cards
   'smart.clickToCopy': 'לחץ להעתקה',
+  'smart.cron': 'Cron', 'smart.curl': 'cURL',
   'smart.jwt': 'JWT', 'smart.jwt.expired': 'פג תוקף {when}', 'smart.jwt.valid': 'בתוקף, יפוג {when}',
   'smart.jwt.header': 'Header', 'smart.jwt.payload': 'Payload', 'smart.jwt.unverified': 'החתימה לא אומתה.',
   'smart.link': 'קישור', 'smart.link.host': 'דומיין', 'smart.link.path': 'נתיב', 'smart.link.hash': 'עוגן',
@@ -79,16 +82,27 @@ I18N.register({ he: {
   'menu.openInWindow': 'פתח בחלון חדש', 'menu.follow': 'עקוב אחרי הלוח', 'menu.hold': 'החזק את הפריט הזה',
   'menu.show': 'הצג', 'menu.showRendered': 'הצג מעוצב', 'menu.showRaw': 'הצג טקסט גולמי',
   'menu.compareWithShown': 'השווה לפריט המוצג', 'menu.closeCompare': 'סגור השוואה', 'menu.delete': 'מחק',
+  'menu.sendTo': 'שלח אל…', 'menu.translate': 'תרגם',
+
+  // quick edit
+  'edit.save': 'שמור', 'edit.cancel': 'ביטול',
 
   // toasts
   'toast.copied': 'הועתק', 'toast.copiedRtl': 'הועתק עם סימוני RTL',
   'toast.holding': 'הפריט מוחזק', 'toast.following': 'עוקב אחרי הלוח',
   'toast.appearance': 'מראה: {theme}',
 
+  // hotkey recorder
+  'hotkey.off': 'כבוי',
+  'hotkey.recording': 'לחץ על הקיצור…',
+  'hotkey.needMod': 'הוסף ⌃, ⌥ או ⌘',
+  'hotkey.clear': 'כבה את הקיצור',
+  'hotkey.taken': 'הקיצור הזה כבר בשימוש. הקיצור הקודם נשאר.',
+
   // settings shell
   'settings.title': 'הגדרות', 'settings.done': 'סיום', 'settings.done.title': 'סגור (Esc)',
   'settings.tab.general': 'כללי', 'settings.tab.content': 'תוכן', 'settings.tab.history': 'היסטוריה',
-  'settings.tab.features': 'פיצ׳רים', 'settings.tab.translate': 'תרגום', 'settings.tab.ai': 'AI', 'settings.tab.about': 'אודות',
+  'settings.tab.translate': 'תרגום', 'settings.tab.ai': 'AI', 'settings.tab.about': 'אודות',
 
   // General tab
   'settings.general.language': 'שפה',
@@ -106,7 +120,7 @@ I18N.register({ he: {
   'settings.general.newWindow': 'חלון חדש', 'settings.general.newTab': 'כרטיסייה חדשה',
   'settings.general.startup': 'הפעלה וקיצור מקלדת',
   'settings.general.loginItem': 'פתח בעת התחברות',
-  'settings.general.hotkey': 'קיצור להצגה / הסתרה', 'settings.general.hotkey.hint': 'פועל מכל יישום.', 'settings.general.hotkey.off': 'כבוי',
+  'settings.general.hotkey': 'קיצור להצגה / הסתרה', 'settings.general.hotkey.hint': 'פועל מכל יישום.',
 
   // Content tab
   'settings.content.rendering': 'תצוגה',
@@ -117,6 +131,31 @@ I18N.register({ he: {
   'settings.content.detect.hint': 'רוב: שורה מוצגת מימין לשמאל כשמספיק מהאותיות שלה בעברית. אות ראשונה: הכלל של הדפדפן עצמו (dir=auto).',
   'settings.content.detect.majority': 'רוב', 'settings.content.detect.first': 'אות ראשונה',
   'settings.content.ratio': 'סף עברית לכיוון ימין־לשמאל', 'settings.content.ratio.value': '{pct}% מהאותיות',
+  'settings.content.copyRtl': 'העתקה עם סימני RTL',
+  'settings.content.copyRtl.hint': 'כפתור Copy RTL ופריטי התפריט (מוסיף סימני כיווניות לשורות בעברית).',
+  'settings.content.tools': 'כרטיסים חכמים וכלים',
+  'settings.content.smartCards': 'כרטיסים חכמים',
+  'settings.content.smartCards.hint': 'זיהוי תוכן מיוחד והצגת כרטיס עם פרטים מתחתיו.',
+  'settings.content.smartJwt': 'JWT',
+  'settings.content.smartJwt.hint': 'פענוח ה־header וה־payload והצגת תוקף.',
+  'settings.content.smartJson': 'סייר JSON',
+  'settings.content.smartJson.hint': 'עץ מתקפל עם סינון לפי נתיב.',
+  'settings.content.smartColor': 'צבעים',
+  'settings.content.smartColor.hint': 'דוגמית צבע וערכי HEX / RGB / HSL / Swift.',
+  'settings.content.smartTime': 'תאריכים וחותמות זמן',
+  'settings.content.smartTime.hint': 'שניות / מילישניות Unix ו־ISO 8601 כתאריך קריא.',
+  'settings.content.smartBase64': 'Base64',
+  'settings.content.smartBase64.hint': 'פענוח Base64 שמתפענח לטקסט קריא.',
+  'settings.content.smartLink': 'קישורים',
+  'settings.content.smartLink.hint': 'דומיין, נתיב ופרמטרים של כתובת שהועתקה.',
+  'settings.content.smartCron': 'ביטויי Cron',
+  'settings.content.smartCron.hint': 'הסבר של תזמוני cron במילים פשוטות והצגת הריצות הבאות.',
+  'settings.content.smartCurl': 'פקודות curl',
+  'settings.content.smartCurl.hint': 'פענוח כתובת, שיטה, כותרות וגוף של פקודת curl שהועתקה.',
+  'settings.content.linkPreview': 'תצוגה מקדימה לקישור',
+  'settings.content.linkPreview.hint': 'כפתור „טען תצוגה מקדימה” בכרטיס קישור. הדף נטען רק אחרי לחיצה עליו.',
+  'settings.content.compare': 'השוואה',
+  'settings.content.compare.hint': 'הצגת ההבדלים בין שני פריטים בהיסטוריה.',
 
   // History tab
   'settings.history.title': 'היסטוריה ופרטיות',

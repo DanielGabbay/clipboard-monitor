@@ -7,8 +7,13 @@
   const later = (fn, ms = 300) => setTimeout(fn, ms);
   const call = (fn, arg) => later(() => { const [a, b] = fn.split('.'); window[a] && window[a][b] && window[a][b](arg); }, 0);
 
-  const DEFAULT_ACTIONS = [['improve', true], ['fix', true], ['simplify', true], ['paraphrase', true], ['summarize', false], ['explain', false]]
-    .map(([id, replaces]) => ({ id, name: '', icon: id, prompt: 'Default prompt for ' + id + '.', replaces, builtin: true }));
+  const DEFAULT_ACTIONS = [
+    ['improve', true], ['fix', true], ['simplify', true], ['paraphrase', true], ['summarize', false], ['explain', false],
+    ['flipKeyboard', true, 'local'], ['wrapRtl', true, 'local'], ['cleanSpaces', true, 'local']
+  ].map(([id, replaces, kind]) => ({
+    id, name: '', icon: id, prompt: kind === 'local' ? '' : 'Default prompt for ' + id + '.', replaces, builtin: true,
+    kind: kind || 'builtin', local: kind === 'local'
+  }));
   const S = { uiLang: 'system', uiLangResolved: 'en', loginSupported: true, actionsDefaults: DEFAULT_ACTIONS, actionsLibrary: DEFAULT_ACTIONS };
   let actionsLog = [
     { id: 'l1', time: Date.now() - 5 * 60e3, action: 'fix', title: '', query: '', app: 'TextEdit', model: 'Anthropic / claude-sonnet-5-5', ms: 1840,
@@ -59,8 +64,8 @@
       case 'actionsLog.delete': actionsLog = actionsLog.filter((e) => e.id !== m.id); call('monitor.actionsLog', { items: actionsLog }); break;
       case 'actionsLog.clear': actionsLog = []; call('monitor.actionsLog', { items: actionsLog }); break;
       case 'version':
-        call('monitor.versionInfo', { version: '1.1.0', build: '42', commit: '993371a', buildDate: new Date().toISOString(),
-          dirty: false, os: 'Version 27.2 (Build 26B5091g)', changelog: '## [1.1.0]\n### Added\n- Hebrew interface\n- AI providers\n' });
+        call('monitor.versionInfo', { version: '1.2.0', build: '42', commit: '993371a', buildDate: new Date().toISOString(),
+          dirty: false, os: 'Version 27.2 (Build 26B5091g)', changelog: '## [1.2.0]\n### Added\n- Hebrew interface\n- AI providers\n' });
         break;
       case 'translate':
         later(() => call('monitor.translated', { req: m.req, from: 'en', to: m.target || 'he', engine: S.translateEngine || 'apple',

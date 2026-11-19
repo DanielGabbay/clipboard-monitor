@@ -12,9 +12,9 @@ for mixed **Hebrew / English (RTL + LTR)** text. Formerly Clipboard Monitor.
   (sanitized), pretty-printed JSON, images, and plain text. Syntax highlighting for code blocks.
 - **Copy RTL.** Copies the text back with every Hebrew line wrapped in Unicode isolates (RLI…PDI), so it pastes
   correctly into apps that have no RTL support. Code fences are left untouched.
-- **Smart cards.** A copied JWT is decoded (claims, expiry), JSON gets a collapsible tree with a path filter
-  (`.items[].name`), and colors, timestamps, Base64 and links get their own card (color formats, dates, decoded
-  text, URL parts and an on-demand page preview).
+- **Smart cards.** Cron expressions (schedule explanation and next run dates), curl commands (method, URL, headers, and body), JWT decoding, JSON collapsible tree with path filter, colors, timestamps, Base64, and links.
+- **Vision OCR.** Extract text from copied images via native macOS Vision OCR, with BiDi per line, Copy, and Translate. Lens also falls back to OCR on canvas/unaccessible windows.
+- **Integrations & MCP.** External deep linking via `textmonitor://` URL scheme, fast CLI subcommands (`flip`, `rtl`, `show`, `history`, `action`, `translate`), and a built-in `--mcp` JSON-RPC server.
 - **Compare.** Diff the shown item against any history item, line by line with changed words highlighted.
 - **Translate.** Automatic Hebrew ↔ English, or "Translate to…" any language in your list. Use an LLM provider and
   model of your choice (Markdown structure, code and URLs are kept), or Apple's on-device Translation framework
@@ -27,10 +27,11 @@ for mixed **Hebrew / English (RTL + LTR)** text. Formerly Clipboard Monitor.
   model you choose; translation also works with Apple's on-device engine. Password fields are never read.
   Settings › Text Actions holds the action library (edit any name, icon or prompt, add your own, use placeholders
   such as `{{ SELECTED TEXT }}`) and a searchable log of every request.
-- **Translate at Pointer.** Point at a paragraph or select text in any app and press ⌃⌥T: the translation opens in
-  a small card next to it, with the original one click away, Copy, and "Open in TextMonitor". The text comes
-  from the app's accessibility tree, so it is exact, Hebrew included, and nothing passes through the clipboard; it
-  needs the Accessibility permission once. Works with native apps, Safari, Chrome and Electron apps.
+- **Translate at Pointer.** Point at a paragraph or select text in any app and press ⌃⌥T (configurable): the translation
+  opens directly in the Text Actions popover with a target language selector, collapsible original text, **Copy**,
+  **Replace** (when text was selected), **Open in TextMonitor**, and **← Back** to all actions. The text comes from
+  the app's accessibility tree, so it is exact, Hebrew included, and nothing passes through the clipboard; it needs
+  the Accessibility permission once. Works with native apps, Safari, Chrome and Electron apps.
 - **Translation Lens.** A floating panel (View › Translation Lens, ⌃⌥⌘T) that shows the text of the window under it
   as a translated, scrollable document, paragraph by paragraph, and follows it as it changes. An "Over the text"
   toggle draws each translation on top of its original line instead. Images, video and scanned PDFs are not
@@ -41,8 +42,9 @@ for mixed **Hebrew / English (RTL + LTR)** text. Formerly Clipboard Monitor.
   the provider file, the page or the logs.
 - **Hebrew or English interface.** Follows the macOS language or your choice. In Hebrew the window chrome,
   settings, menus and cards switch to right to left; clipboard content keeps its own per-block direction.
-- **Settings in tabs.** General, Content, History & privacy, Features (switch off translation, AI, each smart card,
-  Compare, link preview or Copy RTL), AI, and About (version, build, commit, build date and what's new).
+- **Settings in tabs.** General, Content (including Smart cards, Compare, Link preview and Copy RTL), History &
+  privacy, Text Actions, Translation (including Translate at Pointer and Translation Lens), AI, and About (version,
+  build, commit, build date and what's new).
 - **History.** Searchable, with pinning, deleting and a right-click menu. Optionally kept across restarts.
 - **Multiple monitors.** Open more windows (⌘N) or native macOS tabs (⌘T). Hold (⌘L) freezes one window on an
   item while the others keep following the clipboard.
@@ -118,14 +120,17 @@ In the console: `monitor.toggleSettings(true)`, `MOCK.lang('he')` / `MOCK.lang('
 |---|---|
 | ⌃⌥V (configurable) | Show / hide from any app |
 | ⌘N / ⌘T | New window / new tab |
+| ⌘E | Quick edit shown clipboard item |
 | ⌘L | Hold the shown item (stop following the clipboard) |
 | ⌘R | Raw / rendered |
 | ⌘Y | History |
 | ⇧⌘C | Copy with RTL marks |
 | ⇧⌘T | Always on top |
 | ⇧⌘P | Pause monitoring |
-| ⌃⌥T (any app) | Translate at Pointer |
-| ⌥⌘T, or ⌃⌥⌘T from any app | Translation Lens |
+| ⌃⌥T (configurable, any app) | Translate at Pointer |
+| ⌥⌘T, or ⌃⌥⌘T (configurable, any app) | Translation Lens |
+| ⌃⌥A (configurable, any app) | Text Actions |
+| ⌃⌥K (configurable, any app) | Quick Keyboard Flip (Hebrew ↔ English) |
 | ⌘, | Settings |
 | ⌘+ / ⌘- / ⌘0 | Text size |
 
@@ -135,14 +140,15 @@ In the console: `monitor.toggleSettings(true)`, `MOCK.lang('he')` / `MOCK.lang('
   the global hot key (Carbon, no Accessibility permission needed) and the login item (`SMAppService`).
   Next to it: `Settings.swift`, `Localization.swift` (menu strings), `Translation.swift` (Apple / LLM router),
   `AI/` (providers, models, Keychain) and `Version.swift`.
-- `Sources/Lens/`: reading other apps' text. `AXTextReader.swift` reads the accessibility tree: the selection or
-  the paragraph under the pointer, or the visible lines and paragraphs of the window under a region (found with
-  `CGWindowList`). `BubbleController.swift` runs the Translate at Pointer card (`Resources/bubble.html`);
-  `LensController.swift` runs the Translation Lens panel (`Resources/lens.html`), its change notifications
-  (`AXObserver`) and cache. Both translate through `LineTranslator` in `Translation.swift`.
+- `Sources/Actions/` & `Sources/Lens/`: reading and acting on other apps' text. `AXTextReader.swift` reads the
+  accessibility tree: the selection or the paragraph under the pointer, or the visible lines and paragraphs of the
+  window under a region (found with `CGWindowList`). `ActionsController.swift` (`Resources/actions.html`) runs both
+  Text Actions and Translate at Pointer; `LensController.swift` (`Resources/lens.html`) runs the Translation Lens
+  panel, its change notifications (`AXObserver`) and cache. Both translate through `LineTranslator` in `Translation.swift`.
 - `Resources/index.html` + `app.css`: the page, running in a `WKWebView`. `renderer.js` renders the clipboard,
-  `settings.js` runs the settings tabs, and `settings-features.js`, `settings-ai.js` and `settings-about.js` fill
-  their tabs. `i18n.js` is the string engine; each module registers its own English and Hebrew strings.
+  `settings.js` runs the settings tabs, and `settings-actions.js`, `settings-translate.js`, `settings-ai.js` and
+  `settings-about.js` fill their tabs. `i18n.js` is the string engine; each module registers its own English and
+  Hebrew strings.
 - `Resources/bidi-fix.js`: the BiDi engine. It sets `dir` per block by the share of Hebrew letters
   ("majority", the default) or by the first strong character, and isolates inline code and links.
 - `icon/icon.svg`: the app icon source, rendered to `AppIcon.icns` during the build.

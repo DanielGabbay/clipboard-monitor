@@ -1,7 +1,7 @@
 // Settings › AI tab: providers (add / edit / enable / delete), API keys (write-only, kept in the Keychain by the app),
 // health checks for providers and models, and the per-provider model list (search, show / hide, "New", refresh).
 // Data comes from CM.ai ({providers, presets}, sent by the app as monitor.aiState) and results of long actions from
-// 'aiEvent'. Contract: docs/PLAN-settings-ai-i18n.md, "AI — data model" and "Bridge contract".
+// 'aiEvent' (data model and bridge contract).
 //
 // The tab is re-rendered from scratch on every aiState / settings update; everything the user is in the middle of
 // (open form and its typed values, search text, expanded providers, open menu, pending checks, focus) lives in `ui`
@@ -12,8 +12,8 @@
   I18N.register({
     en: {
       'settings.ai.intro': 'API keys are stored in the macOS Keychain. Requests go directly from this Mac to the provider you choose.',
-      'settings.ai.disabled': 'AI features are off.',
-      'settings.ai.openFeatures': 'Open Features',
+      'settings.ai.enable': 'AI',
+      'settings.ai.enable.hint': 'Use AI providers for translation and Text Actions.',
       'settings.ai.providers': 'Providers',
       'settings.ai.empty': 'No providers yet. Add one to use AI translation and other AI features.',
       'settings.ai.add': 'Add provider',
@@ -95,8 +95,8 @@
     },
     he: {
       'settings.ai.intro': 'מפתחות API נשמרים ב־Keychain של macOS. הבקשות נשלחות ישירות מה־Mac הזה לספק שבחרת.',
-      'settings.ai.disabled': 'תכונות ה־AI כבויות.',
-      'settings.ai.openFeatures': 'פתח את פיצ׳רים',
+      'settings.ai.enable': 'בינה מלאכותית',
+      'settings.ai.enable.hint': 'שימוש בספקי ה־AI לתרגום ולפעולות על טקסט.',
       'settings.ai.providers': 'ספקים',
       'settings.ai.empty': 'עדיין אין ספקים. אפשר להוסיף ספק כדי להשתמש בתרגום ובתכונות AI אחרות.',
       'settings.ai.add': 'הוסף ספק',
@@ -283,9 +283,9 @@
   const menuItems = (menu) => Array.from(menu.querySelectorAll('[role="menuitem"]:not([disabled])'));
   function openMenu(key, last) {
     ui.menu = key; render();
+    if (!last && typeof CM.menuKeys === 'function') return;
     const menu = root.querySelector(`.ai-menu[data-menu="${CSS.escape(key)}"]`);
     if (!menu) return;
-    if (typeof CM.menuKeys === 'function') { try { CM.menuKeys(menu, { onClose: () => closeMenu(true) }); } catch (e) { console.error(e); } }
     const items = menuItems(menu);
     if (items.length) items[last ? items.length - 1 : 0].focus();
   }
@@ -333,15 +333,17 @@
     if (fk && act.setSelectionRange && act.type !== 'checkbox') { try { sel = [act.selectionStart, act.selectionEnd]; } catch (e) { /* not text */ } }
 
     const list = providers();
-    let h = `<p class="note ai-intro">${esc(t('settings.ai.intro'))}</p>`;
-    if (CM.S['f.ai'] === false) {
-      h += `<div class="ai-notice"><span>${esc(t('settings.ai.disabled'))}</span><button type="button" class="btn sm" data-act="open-features">${esc(t('settings.ai.openFeatures'))}</button></div>`;
-    }
+    const aiOn = CM.S['f.ai'] !== false;
+    let h = `<div class="row ai-master"><span><span>${esc(t('settings.ai.enable'))}</span><small>${esc(t('settings.ai.enable.hint'))}</small></span>` +
+      `<input type="checkbox" class="switch" data-act="toggle-ai" data-fk="ai-master"${aiOn ? ' checked' : ''}></div>`;
+    h += `<div class="ai-body${aiOn ? '' : ' off'}"${aiOn ? '' : ' inert'}>`;
+    h += `<p class="note ai-intro">${esc(t('settings.ai.intro'))}</p>`;
     h += `<h3>${esc(t('settings.ai.providers'))}</h3>`;
     if (!list.length && !ui.form) h += `<p class="note ai-empty">${esc(t('settings.ai.empty'))}</p>`;
     for (const p of list) h += providerHTML(p);
     if (ui.form && !ui.form.id) h += formHTML();
     else if (!ui.form) h += `<div class="ai-addrow"><button type="button" class="btn primary" data-act="add" data-fk="add">＋ ${esc(t('settings.ai.add'))}</button></div>`;
+    h += `</div>`;
     root.dir = I18N.dir;   // the tab follows the UI language even if the panel around it does not
     root.innerHTML = h;
 
@@ -584,7 +586,7 @@
     const b = e.target.closest('[data-act]');
     if (!b || !root.contains(b) || b.disabled) return;
     const act = b.dataset.act;
-    if (act === 'toggle' || act === 'model-vis' || act === 'search') return;   // handled by change / input
+    if (act === 'toggle-ai' || act === 'toggle' || act === 'model-vis' || act === 'search') return;   // handled by change / input
     const card = b.closest('[data-id]');
     const p = card ? findProvider(card.dataset.id) : null;
     const li = b.closest('[data-model]');
@@ -598,7 +600,6 @@
         if (ui.menu === key) closeMenu(true); else openMenu(key);
         break;
       }
-      case 'open-features': { const tab = document.querySelector('#settings .tabs [data-tab="features"]'); if (tab) tab.click(); break; }
       case 'add': openForm(null); break;
       case 'edit': if (p) openForm(p); break;
       case 'edit-key': if (p) openForm(p, true); break;
@@ -630,6 +631,16 @@
 
   function onChange(e) {
     const el = e.target;
+    if (el.dataset.act === 'toggle-ai') {
+      const on = el.checked;
+      const body = root ? root.querySelector('.ai-body') : null;
+      if (body) {
+        body.classList.toggle('off', !on);
+        if ('inert' in body) body.inert = !on;
+      }
+      CM.setSetting('f.ai', on);
+      return;
+    }
     if (el.dataset.f && ui.form) {
       if (el.dataset.f === 'preset') { choosePreset(el.value); return; }
       if (el.dataset.f === 'autoRefresh') { ui.form.autoRefresh = el.checked; return; }
@@ -747,6 +758,16 @@
       render();
       CM.native({ cmd: 'ai.list' });
     },
-    update() { render(); },
+    update(S) {
+      if (!root || !root.isConnected) return;
+      const aiOn = (S && S['f.ai'] !== undefined ? S['f.ai'] : CM.S['f.ai']) !== false;
+      const sw = root.querySelector('input[data-act="toggle-ai"]');
+      if (sw && sw.checked !== aiOn) sw.checked = aiOn;
+      const body = root.querySelector('.ai-body');
+      if (body) {
+        body.classList.toggle('off', !aiOn);
+        if ('inert' in body) body.inert = !aiOn;
+      }
+    },
   });
 })();

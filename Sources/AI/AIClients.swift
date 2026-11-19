@@ -44,6 +44,14 @@ enum AIClient {
             ? try await AnthropicClient.chat(ep, key: key, model: model, system: system, user: user, maxTokens: maxTokens, timeout: timeout)
             : try await OpenAIClient.chat(ep, key: key, model: model, system: system, user: user, maxTokens: maxTokens, timeout: timeout)
     }
+
+    /// Multi-turn streaming chat; yields incremental text deltas.
+    static func chatStream(_ ep: AIEndpoint, key: String?, model: String, system: String?,
+                           messages: [[String: String]], maxTokens: Int?, timeout: TimeInterval) -> AsyncThrowingStream<String, Error> {
+        ep.kind == "anthropic"
+            ? AnthropicClient.chatStream(ep, key: key, model: model, system: system, messages: messages, maxTokens: maxTokens, timeout: timeout)
+            : OpenAIClient.chatStream(ep, key: key, model: model, system: system, messages: messages, maxTokens: maxTokens, timeout: timeout)
+    }
 }
 
 enum AIHTTP {
@@ -113,6 +121,38 @@ enum AIHTTP {
         guard let key, key.count >= 4 else { return s }
         return s.replacingOccurrences(of: key, with: "•••")
     }
+
+    /// Streams SSE lines from a request, validating HTTP 2xx status and propagating cancellation.
+    static func streamLines(_ r: URLRequest, key: String?, onLine: (String) throws -> Bool) async throws {
+        let (bytes, response): (URLSession.AsyncBytes, URLResponse)
+        do { (bytes, response) = try await session.bytes(for: r) }
+        catch let err as CancellationError { throw err }
+        catch let err as URLError where err.code == .cancelled { throw CancellationError() }
+        catch { throw AIError(scrub(error.localizedDescription, key)) }
+
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status) else {
+            var errData = Data()
+            do {
+                for try await b in bytes {
+                    errData.append(b)
+                    if errData.count >= 65_536 { break }
+                }
+            } catch {}
+            throw AIError(scrub("HTTP \(status): " + errorMessage(errData, status: status), key))
+        }
+
+        do {
+            for try await line in bytes.lines {
+                try Task.checkCancellation()
+                if try !onLine(line) { break }
+            }
+        }
+        catch let err as CancellationError { throw err }
+        catch let err as URLError where err.code == .cancelled { throw CancellationError() }
+        catch let err as AIError { throw err }
+        catch { throw AIError(scrub(error.localizedDescription, key)) }
+    }
 }
 
 enum OpenAIClient {
@@ -152,6 +192,54 @@ enum OpenAIClient {
         if let s = message["content"] as? String { return s }
         if let parts = message["content"] as? [[String: Any]] { return parts.compactMap { $0["text"] as? String }.joined() }
         return ""
+    }
+
+    static func chatStream(_ ep: AIEndpoint, key: String?, model: String, system: String?,
+                           messages: [[String: String]], maxTokens: Int?, timeout: TimeInterval) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard let base = AIHTTP.base(ep.baseURL) else { throw AIError("Invalid base URL") }
+                    var msgs: [[String: Any]] = []
+                    if let system, !system.isEmpty { msgs.append(["role": "system", "content": system]) }
+                    for m in messages {
+                        guard let role = m["role"], let content = m["content"], !content.isEmpty else { continue }
+                        msgs.append(["role": role, "content": content])
+                    }
+                    var body: [String: Any] = ["model": model, "messages": msgs, "stream": true]
+                    if let maxTokens { body[ep.kind == "openai" ? "max_completion_tokens" : "max_tokens"] = maxTokens }
+                    var h = headers(key)
+                    h["Accept"] = "text/event-stream, application/json"
+                    let r = try AIHTTP.request(base + "/chat/completions", method: "POST", headers: h, body: body, timeout: timeout)
+                    try await AIHTTP.streamLines(r, key: key) { line in
+                        guard line.hasPrefix("data:") else { return true }
+                        let payload = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                        if payload.isEmpty { return true }
+                        if payload == "[DONE]" { return false }
+                        guard let obj = (try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] else { return true }
+                        if let err = obj["error"] {
+                            let msg = (err as? [String: Any])?["message"] as? String
+                                ?? (err as? String)
+                                ?? AIHTTP.errorMessage(Data(payload.utf8), status: 200)
+                            throw AIError(AIHTTP.scrub(msg, key))
+                        }
+                        guard let choices = obj["choices"] as? [[String: Any]], let first = choices.first,
+                              let delta = first["delta"] as? [String: Any] else { return true }
+                        if let s = delta["content"] as? String, !s.isEmpty {
+                            continuation.yield(s)
+                        } else if let parts = delta["content"] as? [[String: Any]] {
+                            let s = parts.compactMap { $0["text"] as? String }.joined()
+                            if !s.isEmpty { continuation.yield(s) }
+                        }
+                        return true
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 }
 
@@ -205,5 +293,74 @@ enum AnthropicClient {
             throw AIError("Invalid response from the server")
         }
         return content.filter { ($0["type"] as? String) == "text" }.compactMap { $0["text"] as? String }.joined()
+    }
+
+    /// Normalizes message history for Anthropic's alternating user/assistant turn requirements.
+    static func normalizeMessages(_ messages: [[String: String]]) -> [[String: String]] {
+        var out: [[String: String]] = []
+        for m in messages {
+            guard let role = m["role"], role == "user" || role == "assistant",
+                  let content = m["content"], !content.isEmpty else { continue }
+            if let last = out.last, last["role"] == role {
+                out[out.count - 1]["content"] = (last["content"] ?? "") + "\n\n" + content
+            } else {
+                out.append(["role": role, "content": content])
+            }
+        }
+        while !out.isEmpty && out.first?["role"] != "user" {
+            out.removeFirst()
+        }
+        return out
+    }
+
+    static func chatStream(_ ep: AIEndpoint, key: String?, model: String, system: String?,
+                           messages: [[String: String]], maxTokens: Int?, timeout: TimeInterval) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let root = try root(ep)
+                    let msgs = normalizeMessages(messages)
+                    var body: [String: Any] = ["model": model, "max_tokens": maxTokens ?? 8192,
+                                               "messages": msgs, "stream": true]
+                    if let system, !system.isEmpty { body["system"] = system }
+                    var h = headers(key)
+                    h["Accept"] = "text/event-stream, application/json"
+                    let r = try AIHTTP.request(root + "/messages", method: "POST", headers: h, body: body, timeout: timeout)
+                    var currentEvent = ""
+                    try await AIHTTP.streamLines(r, key: key) { line in
+                        if line.hasPrefix("event:") {
+                            currentEvent = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                            return true
+                        }
+                        guard line.hasPrefix("data:") else { return true }
+                        let eventName = currentEvent
+                        currentEvent = ""
+                        let payload = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                        if payload.isEmpty { return true }
+                        if payload == "[DONE]" { return false }
+                        guard let obj = (try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] else { return true }
+                        let type = (obj["type"] as? String) ?? eventName
+                        if type == "error" || obj["error"] != nil {
+                            let msg = (obj["error"] as? [String: Any])?["message"] as? String
+                                ?? (obj["error"] as? String)
+                                ?? AIHTTP.errorMessage(Data(payload.utf8), status: 200)
+                            throw AIError(AIHTTP.scrub(msg, key))
+                        }
+                        if type == "content_block_delta",
+                           let delta = obj["delta"] as? [String: Any],
+                           (delta["type"] as? String) == "text_delta",
+                           let text = delta["text"] as? String, !text.isEmpty {
+                            continuation.yield(text)
+                        }
+                        if type == "message_stop" { return false }
+                        return true
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 }

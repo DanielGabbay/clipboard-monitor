@@ -1,14 +1,14 @@
-// Settings › Translation tab: engine (Apple on-device / AI model), the AI model picker, the on-device fallback and
-// the "Translate to…" languages. The on/off switch itself (f.translate) lives in the Features tab; when it is off
-// this tab shows a short notice with a button that turns it on. update(S) runs on 'settings' and 'aiState'.
+// Settings › Translation tab: master toggle (f.translate), engine (Apple on-device / AI model), AI model picker,
+// on-device fallback, "Translate to…" languages, and Translate anywhere (f.bubble + bubbleHotkey, f.lens + lensHotkey).
+// update(S) runs on 'settings' and 'aiState'.
 (function () {
   'use strict';
 
   I18N.register({
     en: {
       'settings.tab.translate': 'Translation',
-      'settings.translate.off': 'Translation is turned off.',
-      'settings.translate.turnOn': 'Turn on translation',
+      'settings.translate.enable': 'Translation',
+      'settings.translate.enable.hint': 'Translate button, translated view and menu entries.',
       'settings.translate.engine': 'Engine',
       'settings.translate.engine.apple': 'Apple on-device',
       'settings.translate.engine.llm': 'AI model',
@@ -23,11 +23,20 @@
       'settings.translate.fallback': 'If the AI model fails, translate on-device',
       'settings.translate.targets': 'Languages for "Translate to…"',
       'settings.translate.targets.hint': 'The automatic button always translates between Hebrew and English.',
+      'settings.translate.anywhere': 'Translate anywhere',
+      'settings.translate.bubble': 'Translate at Pointer',
+      'settings.translate.bubble.hint': 'Point at a paragraph or select text in any app and press the shortcut: the translation opens next to it. Needs Accessibility access.',
+      'settings.translate.bubbleHotkey': 'Shortcut',
+      'settings.translate.bubbleHotkey.hint': 'Translates what is under the pointer, from any app.',
+      'settings.translate.lens': 'Translation Lens',
+      'settings.translate.lens.hint': 'A floating panel that shows the text of the window under it as a translated document (View › Translation Lens). Needs Accessibility access.',
+      'settings.translate.lensHotkey': 'Lens shortcut',
+      'settings.translate.lensHotkey.hint': 'Opens and closes the lens from any app.',
     },
     he: {
       'settings.tab.translate': 'תרגום',
-      'settings.translate.off': 'התרגום כבוי.',
-      'settings.translate.turnOn': 'הפעל תרגום',
+      'settings.translate.enable': 'תרגום',
+      'settings.translate.enable.hint': 'כפתור התרגום, תצוגת התרגום ופריטי התפריט.',
       'settings.translate.engine': 'מנוע',
       'settings.translate.engine.apple': 'Apple במכשיר',
       'settings.translate.engine.llm': 'מודל AI',
@@ -42,6 +51,15 @@
       'settings.translate.fallback': 'אם ה־AI נכשל, תרגם במכשיר',
       'settings.translate.targets': 'שפות עבור „תרגם ל…”',
       'settings.translate.targets.hint': 'הכפתור האוטומטי תמיד מתרגם בין עברית לאנגלית.',
+      'settings.translate.anywhere': 'תרגום מכל מקום',
+      'settings.translate.bubble': 'תרגום מתחת לסמן',
+      'settings.translate.bubble.hint': 'הצבע על פסקה או סמן טקסט בכל יישום ולחץ על הקיצור: התרגום נפתח לידו. דורש גישת נגישות.',
+      'settings.translate.bubbleHotkey': 'קיצור',
+      'settings.translate.bubbleHotkey.hint': 'מתרגם את מה שמתחת לסמן, מכל יישום.',
+      'settings.translate.lens': 'עדשת תרגום',
+      'settings.translate.lens.hint': 'חלונית צפה שמציגה את הטקסט של החלון שמתחתיה כמסמך מתורגם (תצוגה › עדשת תרגום). דורשת גישת נגישות.',
+      'settings.translate.lensHotkey': 'קיצור לעדשה',
+      'settings.translate.lensHotkey.hint': 'פותח וסוגר את העדשה מכל יישום.',
     },
   });
 
@@ -63,14 +81,40 @@
   }
 
   let root = null;
+  let bubbleHk = null;
+  let lensHk = null;
+
+  function labelled(key) {
+    const s = el('span');
+    s.append(el('span', '', t(key)), el('small', '', t(key + '.hint')));
+    return s;
+  }
+
+  function switchRow(name) {
+    const row = el('div', 'row');
+    row.dataset.feature = name;
+    const sw = el('input', 'switch'); sw.type = 'checkbox'; sw.dataset.key = 'f.' + name;
+    row.append(labelled('settings.translate.' + name), sw);
+    return row;
+  }
+
+  function hotkeySub(name, rec) {
+    const sub = el('div', 'f-sub f-hk');
+    sub.dataset.for = name;
+    const row = el('div', 'row');
+    row.append(labelled('settings.translate.' + name + 'Hotkey'), rec);
+    sub.appendChild(row);
+    return sub;
+  }
 
   function mount(panel) {
     root = panel;
     panel.classList.add('translate-tab');
 
-    // Shown instead of the controls while the Translation feature is off.
-    panel.appendChild(notice('t-off', t('settings.translate.off'),
-      button(t('settings.translate.turnOn'), 'primary sm', () => CM.setSetting('f.translate', true))));
+    const master = el('div', 'row');
+    const mSw = el('input', 'switch'); mSw.type = 'checkbox'; mSw.dataset.key = 'f.translate';
+    master.append(labelled('settings.translate.enable'), mSw);
+    panel.appendChild(master);
 
     const body = el('div', 't-body');
 
@@ -130,6 +174,14 @@
     tg.appendChild(tgt);
     body.appendChild(tg);
 
+    body.appendChild(el('h3', '', t('settings.translate.anywhere')));
+    body.appendChild(switchRow('bubble'));
+    bubbleHk = CM.hotkeyRecorder('bubbleHotkey');
+    body.appendChild(hotkeySub('bubble', bubbleHk));
+    body.appendChild(switchRow('lens'));
+    lensHk = CM.hotkeyRecorder('lensHotkey');
+    body.appendChild(hotkeySub('lens', lensHk));
+
     panel.appendChild(body);
     CM.bindControls(panel);
     CM.fillForm();
@@ -174,8 +226,22 @@
     if (!root) return;
     const on = (k) => S['f.' + k] !== false;
     const trOn = on('translate');
-    root.querySelector('.t-off').hidden = trOn;
-    root.querySelector('.t-body').hidden = !trOn;
+    const body = root.querySelector('.t-body');
+    body.classList.toggle('off', !trOn);
+    if ('inert' in body) body.inert = !trOn;
+    body.querySelectorAll(':scope > .row input, :scope > .row select, :scope > .row button, :scope > .t-notice button').forEach((c) => {
+      c.disabled = !trOn;
+    });
+    ['bubble', 'lens'].forEach((name) => {
+      const featOn = on(name);
+      const rowOn = trOn && featOn;
+      root.querySelectorAll('.f-hk[data-for="' + name + '"] .row').forEach((r) => {
+        r.classList.toggle('off', !featOn);
+        r.querySelectorAll('button, input, select').forEach((c) => { c.disabled = !rowOn; });
+      });
+    });
+    if (bubbleHk) bubbleHk.refresh();
+    if (lensHk) lensHk.refresh();
     const aiOn = on('ai');
     const llm = S.translateEngine === 'llm';
     root.querySelector('.t-ai-off').hidden = !(llm && !aiOn);

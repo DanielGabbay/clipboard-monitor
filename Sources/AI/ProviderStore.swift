@@ -116,7 +116,7 @@ enum ProviderStore {
             let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
             let backup = url.deletingLastPathComponent().appendingPathComponent("ai-providers.unreadable-\(stamp).json")
             try? FileManager.default.moveItem(at: url, to: backup)
-            NSLog("Clipboard Monitor: could not read ai-providers.json (\(error.localizedDescription)); kept it as \(backup.lastPathComponent)")
+            NSLog("TextMonitor: could not read ai-providers.json (\(error.localizedDescription)); kept it as \(backup.lastPathComponent)")
             return []
         }
     }
@@ -128,12 +128,12 @@ enum ProviderStore {
         guard let data = try? enc.encode(providers) else { return }
         let tmp = url.deletingLastPathComponent().appendingPathComponent(".ai-providers.\(UUID().uuidString).tmp")
         guard FileManager.default.createFile(atPath: tmp.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
-            NSLog("Clipboard Monitor: could not write ai-providers.json")
+            NSLog("TextMonitor: could not write ai-providers.json")
             return
         }
         if rename(tmp.path, url.path) != 0 {
             try? FileManager.default.removeItem(at: tmp)
-            NSLog("Clipboard Monitor: could not replace ai-providers.json (errno \(errno))")
+            NSLog("TextMonitor: could not replace ai-providers.json (errno \(errno))")
         }
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }

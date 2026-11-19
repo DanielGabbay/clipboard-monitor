@@ -19,7 +19,7 @@ enum Settings {
         "font": "system",
         // features (flat "f.*" keys so the generic set path covers them)
         "f.translate": true, "f.ai": true, "f.smartCards": true,
-        "f.smartJwt": true, "f.smartJson": true, "f.smartColor": true, "f.smartTime": true, "f.smartBase64": true, "f.smartLink": true,
+        "f.smartJwt": true, "f.smartJson": true, "f.smartColor": true, "f.smartTime": true, "f.smartBase64": true, "f.smartLink": true, "f.smartCron": true, "f.smartCurl": true,
         "f.compare": true, "f.linkPreview": true, "f.copyRtl": true, "f.lens": true, "f.bubble": true, "f.actions": true,
         // translation
         "translateEngine": "apple",         // "apple" | "llm"
@@ -35,12 +35,12 @@ enum Settings {
         "bubbleHotkey": "ctrl-opt-t",
         // Text Actions (popover on the selected text of any app)
         "actionsHotkey": "ctrl+opt+KeyA",   // recorded shortcut ("off": none); see HotKey.parse
+        "flipHotkey": "ctrl+opt+KeyK",      // global quick keyboard flip shortcut ("off": none); see HotKey.parse
         "actionsButton": true,              // floating button next to a fresh selection
         "menuBarIcon": true,
         "actionsProvider": "",              // empty: the translation model, else the first usable model
         "actionsModel": "",
         "actionsList": "[]",                // the action library, JSON: [{id, name?, icon?, prompt?, replaces?}]; empty: defaults
-        "customActions": "[]",              // older custom actions [{id, name, prompt}], read when the library is empty
         "actionsLogKeep": true,             // keep a log of the requests (actions-history.json)
         // AI
         "modelRefreshHours": 24,

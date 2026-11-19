@@ -62,7 +62,7 @@ final class SelectionWatcher: NSObject {
     }
 
     private func look(at up: NSPoint, gen: Int) {
-        guard gen == generation, AXTextReader.trusted, !ActionsController.isOpen, !BubbleController.isOpen,
+        guard gen == generation, AXTextReader.trusted, !ActionsController.isOpen,
               let d = NSApp.delegate as? AppDelegate,
               let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != getpid(),
               !d.isIgnored(front) else { return }
